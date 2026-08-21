@@ -2,7 +2,7 @@
 
 企业输入 → 画像结构化 → Embedding 向量检索 → DeepSeek Rerank → 已选 EvidenceRef → 四维话语资产 → 场景材料。
 
-当前画像生成仍为 mock；讲话匹配、话语资产与场景材料已接入 DeepSeek。DEMO 文本**不是**总书记讲话原文。
+当前画像生成仍为 mock；讲话匹配、话语资产与场景材料已接入 DeepSeek。运行时 Canonical Source 为 `corpus/cleaned/`，Chunk 由后端 Chunker 从原文生成。DEMO 目录仍保留占位文本，**不是**总书记讲话原文。
 
 ## 启动
 
@@ -23,6 +23,8 @@ npm run dev
 cd backend
 npm test
 npm run typecheck
+npm run corpus:preflight
+npm run corpus:index
 npm run retrieve:demo
 npm run recommend:demo
 npm run assets:demo

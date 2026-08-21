@@ -76,6 +76,8 @@ export const embeddingConfig = {
     "https://dashscope.aliyuncs.com/compatible-mode/v1",
   model: process.env.EMBEDDING_MODEL ?? "qwen3.7-text-embedding",
   dimensions: optionalNumber(process.env.EMBEDDING_DIMENSIONS, 1024),
+  /** 工程默认值；DashScope 单次 embedding 条数上限按 10 分批。 */
+  batchSize: optionalNumber(process.env.EMBEDDING_BATCH_SIZE, 10),
 };
 
 export function requireDashscopeApiKey(): string {

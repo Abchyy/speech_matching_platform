@@ -7,6 +7,8 @@ import {
   ingestCanonicalDocuments,
   ingestCanonicalMarkdown,
   ingestDemoCorpus,
+  ingestProjectCorpus,
+  preflightCanonicalCorpus,
   parseCanonicalMarkdown,
 } from "./index";
 import { chunkCanonicalDocument } from "./chunker";
@@ -145,5 +147,27 @@ source: DEMO
     assert.equal(ref.startIndex, 0);
     assert.equal(ref.endIndex, chunk.text.length);
     assert.equal(resolveQuoteFromEvidenceRef(ref, repository), chunk.text);
+  });
+
+  it("cleaned Canonical 由当前 Chunker 生成运行时 Chunk，并跳过去重副本", () => {
+    const report = preflightCanonicalCorpus();
+    assert.ok(report.canonicalDirectory.replaceAll("\\", "/").endsWith("corpus/cleaned"));
+    assert.equal(report.sha256Verified, report.documentCount);
+    assert.equal(report.uniqueSpeechIds, true);
+    assert.equal(report.uniqueChunkIds, true);
+    assert.ok(report.chunkCount > 0);
+    assert.equal(report.runtimeDocumentCount, report.documentCount - report.droppedCount);
+
+    const { documents, chunks } = ingestProjectCorpus();
+    assert.equal(documents.length, report.runtimeDocumentCount);
+    assert.equal(chunks.length, report.chunkCount);
+    const bySpeechId = new Map(documents.map((document) => [document.speechId, document]));
+    const chunkIds = chunks.map((chunk) => chunk.chunkId);
+    assert.equal(new Set(chunkIds).size, chunkIds.length);
+    for (const chunk of chunks) {
+      const document = bySpeechId.get(chunk.speechId);
+      assert.ok(document);
+      assert.equal(document.fullText.includes(chunk.text), true);
+    }
   });
 });
