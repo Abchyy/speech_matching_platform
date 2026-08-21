@@ -2,6 +2,7 @@ import { z } from "zod";
 import { evidenceRefSchema } from "./evidence";
 import { enterpriseProfileSchema } from "./profile";
 
+/** Canonical Document：权威原始正文。speechId 即 document id，fullText 进入后不可改写。 */
 export const speechDocumentSchema = z.object({
   speechId: z.string().min(1),
   title: z.string().min(1),

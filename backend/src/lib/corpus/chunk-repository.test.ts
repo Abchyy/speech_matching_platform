@@ -37,7 +37,9 @@ const stubRepository: ChunkRepository = {
 describe("ChunkRepository boundary", () => {
   it("默认实现是 DemoChunkRepository", () => {
     assert.equal(defaultChunkRepository instanceof DemoChunkRepository, true);
-    assert.ok(defaultChunkRepository.getByChunkId("demo_chunk_001"));
+    const first = defaultChunkRepository.listAll()[0];
+    assert.ok(first);
+    assert.ok(defaultChunkRepository.getByChunkId(first.chunkId));
   });
 
   it("Evidence 回填通过 Repository 取 Chunk，而不是 demo helper", () => {
