@@ -1,0 +1,53 @@
+{
+  "policy": "Keep one Canonical copy per speech. Prefer complete body over excerpt, 人民日报/完整标题 over truncated or news-shell reprints. Do not delete corpus/raw/.",
+  "dropped": {
+    "speech_011": {
+      "keep": "speech_010",
+      "reason": "与 speech_010 正文相同（企业家座谈会）"
+    },
+    "speech_026": {
+      "keep": "speech_027",
+      "reason": "正文为 speech_027 的真子集（民营企业座谈会）"
+    },
+    "speech_029": {
+      "keep": "speech_028",
+      "reason": "与 speech_028 正文相同（APEC 领导人会议讲话）"
+    },
+    "speech_033": {
+      "keep": "speech_034",
+      "reason": "与 speech_034 正文相同（《决定》说明）"
+    },
+    "speech_035": {
+      "keep": "speech_032",
+      "reason": "正文为 speech_032 的节录（全国生态环境保护大会）"
+    },
+    "speech_036": {
+      "keep": "speech_032",
+      "reason": "正文为 speech_032 的节录（全国生态环境保护大会）"
+    },
+    "speech_043": {
+      "keep": "speech_005",
+      "reason": "二十大报告重复版本，标题截断且文首有重复残片"
+    },
+    "speech_059": {
+      "keep": "speech_005",
+      "reason": "正文为二十大报告（speech_005）节录"
+    },
+    "speech_064": {
+      "keep": "speech_065",
+      "reason": "正文为 speech_065 的真子集（APEC 工商峰会书面演讲）"
+    },
+    "speech_066": {
+      "keep": "speech_065",
+      "reason": "与 speech_065 正文相同"
+    },
+    "speech_069": {
+      "keep": "speech_068",
+      "reason": "与 speech_068 正文相同（全国政协新年茶话会）"
+    },
+    "speech_075": {
+      "keep": "speech_053",
+      "reason": "同一次两院院士大会讲话的另一版本"
+    }
+  }
+}
