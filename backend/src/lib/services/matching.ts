@@ -1,5 +1,5 @@
 import { appConfig } from "../config";
-import { demoSpeechChunks } from "../corpus/demo-corpus";
+import { defaultChunkRepository, type ChunkRepository } from "../corpus";
 import type {
   EnterpriseProfile,
   ProfileItem,
@@ -60,11 +60,15 @@ function buildReason(entry: ScoredChunk): string {
   return `演示匹配：占位语料关键词「${entry.matchedKeywords.join("、")}」与企业画像存在主题重叠。正式环境将由向量检索与 Rerank 生成推荐理由，且不得由模型生成原文。`;
 }
 
-export function recommendSpeeches(profile: EnterpriseProfile): SpeechRecommendation[] {
+export function recommendSpeeches(
+  profile: EnterpriseProfile,
+  repository: ChunkRepository = defaultChunkRepository,
+): SpeechRecommendation[] {
   const retrievalText = buildRetrievalText(profile);
   const items = collectProfileItems(profile);
 
-  const ranked = demoSpeechChunks
+  const ranked = repository
+    .listAll()
     .map((chunk) => scoreChunk(retrievalText, items, chunk))
     .sort((left, right) => right.score - left.score);
 
@@ -91,7 +95,7 @@ export function recommendSpeeches(profile: EnterpriseProfile): SpeechRecommendat
       relevance: relevanceFromScore(entry.score),
       reason: buildReason(entry),
       profileEvidenceIds: entry.profileEvidenceIds,
-      isDemoPlaceholder: true,
+      isDemoPlaceholder: entry.chunk.isDemoPlaceholder,
     };
   });
 }

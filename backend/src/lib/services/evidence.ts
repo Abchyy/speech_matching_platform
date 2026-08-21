@@ -1,4 +1,4 @@
-import { getDemoChunkById } from "../corpus/demo-corpus";
+import { defaultChunkRepository, type ChunkRepository } from "../corpus";
 import type { EvidenceRef, SpeechChunk } from "../schemas";
 
 export class EvidenceError extends Error {
@@ -17,32 +17,35 @@ export function toFullChunkEvidenceRef(chunk: SpeechChunk): EvidenceRef {
   };
 }
 
-export function sliceCanonicalQuote(text: string, ref: EvidenceRef): string {
-  if (ref.startIndex < 0 || ref.endIndex > text.length || ref.startIndex >= ref.endIndex) {
-    throw new EvidenceError(
-      `EvidenceRef 偏移无效: ${ref.chunkId} [${ref.startIndex}, ${ref.endIndex}) / ${text.length}`,
-    );
-  }
-
-  return text.slice(ref.startIndex, ref.endIndex);
-}
-
-export function resolveQuoteFromChunk(chunk: SpeechChunk, ref: EvidenceRef): string {
+export function assertChunkLevelEvidence(chunk: SpeechChunk, ref: EvidenceRef): void {
   if (ref.speechId !== chunk.speechId || ref.chunkId !== chunk.chunkId) {
     throw new EvidenceError("EvidenceRef 与 Chunk 标识不一致");
   }
 
-  const quote = sliceCanonicalQuote(chunk.text, ref);
+  if (ref.startIndex !== 0 || ref.endIndex !== chunk.text.length) {
+    throw new EvidenceError(
+      `MVP 仅支持 Chunk 级 Evidence，不支持 Chunk 内 Span 选择: ${ref.chunkId} [${ref.startIndex}, ${ref.endIndex}) / ${chunk.text.length}`,
+    );
+  }
+}
 
-  if (!chunk.text.includes(quote) || quote !== chunk.text.slice(ref.startIndex, ref.endIndex)) {
-    throw new EvidenceError("引用文本不是 Canonical Chunk 的原样子串");
+export function resolveQuoteFromChunk(chunk: SpeechChunk, ref: EvidenceRef): string {
+  assertChunkLevelEvidence(chunk, ref);
+
+  const quote = chunk.text.slice(ref.startIndex, ref.endIndex);
+
+  if (quote !== chunk.text || !chunk.text.includes(quote)) {
+    throw new EvidenceError("引用文本必须等于完整 Canonical Chunk");
   }
 
   return quote;
 }
 
-export function resolveQuoteFromEvidenceRef(ref: EvidenceRef): string {
-  const chunk = getDemoChunkById(ref.chunkId);
+export function resolveQuoteFromEvidenceRef(
+  ref: EvidenceRef,
+  repository: ChunkRepository = defaultChunkRepository,
+): string {
+  const chunk = repository.getByChunkId(ref.chunkId);
   if (!chunk) {
     throw new EvidenceError(`未找到 chunkId=${ref.chunkId} 的 Canonical Chunk`);
   }

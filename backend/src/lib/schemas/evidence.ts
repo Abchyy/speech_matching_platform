@@ -2,8 +2,9 @@ import { z } from "zod";
 
 /**
  * MVP 冻结：Chunk 级 Evidence。
- * offset 相对于该 Chunk 的 Canonical `text`，半开区间 [startIndex, endIndex)。
- * 确认整个 Chunk 时 startIndex = 0 且 endIndex = chunk.text.length。
+ * 字段保持 speechId / chunkId / startIndex / endIndex。
+ * 运行时必须满足 startIndex === 0 且 endIndex === chunk.text.length；
+ * 该约束在 Evidence service 中强制校验，不支持 Chunk 内 Span。
  */
 export const evidenceRefSchema = z.object({
   speechId: z.string().min(1),

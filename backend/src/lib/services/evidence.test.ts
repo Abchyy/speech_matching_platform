@@ -1,50 +1,60 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { demoSpeechChunks } from "../corpus/demo-corpus";
+import { defaultChunkRepository } from "../corpus";
 import {
   EvidenceError,
   resolveQuoteFromChunk,
-  sliceCanonicalQuote,
   toFullChunkEvidenceRef,
 } from "./evidence";
 
-describe("EvidenceRef quote backfill", () => {
-  const chunk = demoSpeechChunks[0];
+describe("Chunk-level EvidenceRef", () => {
+  const chunk = defaultChunkRepository.listAll()[0];
+  assert.ok(chunk);
 
-  it("MVP 确认整个 Chunk 时偏移为 [0, text.length)", () => {
+  it("完整 Chunk Evidence 通过", () => {
     const ref = toFullChunkEvidenceRef(chunk);
-    assert.equal(ref.speechId, chunk.speechId);
-    assert.equal(ref.chunkId, chunk.chunkId);
     assert.equal(ref.startIndex, 0);
     assert.equal(ref.endIndex, chunk.text.length);
-  });
 
-  it("程序按 EvidenceRef 切片得到的原文与 Chunk 完全一致", () => {
-    const ref = toFullChunkEvidenceRef(chunk);
     const quote = resolveQuoteFromChunk(chunk, ref);
     assert.equal(quote, chunk.text);
-    assert.equal(chunk.text.includes(quote), true);
-    assert.equal(quote, chunk.text.slice(ref.startIndex, ref.endIndex));
+    assert.equal(quote, chunk.text.slice(0, chunk.text.length));
   });
 
-  it("支持按 Chunk 文本切片，而不是改写原文", () => {
-    const quote = sliceCanonicalQuote(chunk.text, {
-      speechId: chunk.speechId,
-      chunkId: chunk.chunkId,
-      startIndex: 0,
-      endIndex: 8,
-    });
-    assert.equal(quote, chunk.text.slice(0, 8));
-  });
-
-  it("偏移越界时拒绝回填", () => {
+  it("拒绝 startIndex > 0", () => {
     assert.throws(
       () =>
-        sliceCanonicalQuote(chunk.text, {
+        resolveQuoteFromChunk(chunk, {
+          speechId: chunk.speechId,
+          chunkId: chunk.chunkId,
+          startIndex: 1,
+          endIndex: chunk.text.length,
+        }),
+      EvidenceError,
+    );
+  });
+
+  it("拒绝 endIndex < chunk.text.length", () => {
+    assert.throws(
+      () =>
+        resolveQuoteFromChunk(chunk, {
           speechId: chunk.speechId,
           chunkId: chunk.chunkId,
           startIndex: 0,
-          endIndex: chunk.text.length + 1,
+          endIndex: chunk.text.length - 1,
+        }),
+      EvidenceError,
+    );
+  });
+
+  it("拒绝任意局部切片请求", () => {
+    assert.throws(
+      () =>
+        resolveQuoteFromChunk(chunk, {
+          speechId: chunk.speechId,
+          chunkId: chunk.chunkId,
+          startIndex: 2,
+          endIndex: 10,
         }),
       EvidenceError,
     );

@@ -10,6 +10,7 @@ M1 Development
 - EvidenceRef 机制冻结
 - 语料方案对齐
 - M1-A.1 后端 Vertical Slice：企业输入 → 画像结构化 → mock 匹配 → Evidence 回填
+- M1-A.2 Evidence 边界修正：强制 Chunk 级 Evidence，抽象 ChunkRepository
 
 下一步：
 接入小规模黄金/Demo Canonical 语料、Chunk 与检索 Pipeline；话语资产与场景材料生成仍为占位接口

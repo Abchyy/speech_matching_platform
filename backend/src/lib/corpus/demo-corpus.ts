@@ -96,7 +96,3 @@ export const demoSpeechChunks: SpeechChunk[] = [
     embeddingText: `标题：${demoSpeechPrivate.title}\n\n正文：\n${DEMO_PREFIX}支持科技型中小企业把自身技术能力转化为产业价值，在创新创业中服务实体经济。`,
   }),
 ];
-
-export function getDemoChunkById(chunkId: string): SpeechChunk | undefined {
-  return demoSpeechChunks.find((chunk) => chunk.chunkId === chunkId);
-}
