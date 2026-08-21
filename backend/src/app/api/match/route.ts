@@ -36,7 +36,7 @@ export async function POST(request: Request) {
         assets: {
           method: "POST",
           path: "/api/assets/generate",
-          status: "placeholder",
+          status: "ready",
           required: ["confirmedProfile", "selectedEvidenceRefs"],
         },
         material: {
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
         },
       },
       notes: [
-        "当前匹配已接入 Embedding + 向量检索 + DeepSeek Rerank；画像与生成仍为 mock/占位。",
+        "当前匹配已接入 Embedding + 向量检索 + DeepSeek Rerank；话语资产已接入 DeepSeek，场景材料仍为占位。",
         "返回的 quote 由程序按 EvidenceRef 从 Demo Chunk 切片回填，不是模型生成。",
         "Demo 语料明确标注为占位文本，不是总书记讲话原文。",
         "产品流程仍要求画像确认后再匹配；本接口仅用于打通后端链路。",

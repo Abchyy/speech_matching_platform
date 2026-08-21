@@ -1,7 +1,6 @@
 import { jsonError, jsonOk, parseJsonRequest } from "@/lib/http";
 import { generateAssetsRequestSchema } from "@/lib/schemas";
-import { generateAssetsPlaceholder } from "@/lib/services/assets";
-import { resolveQuoteFromEvidenceRef } from "@/lib/services/evidence";
+import { generateDiscourseAssets } from "@/lib/services/assets";
 
 export async function POST(request: Request) {
   const parsed = await parseJsonRequest(request, generateAssetsRequestSchema);
@@ -10,16 +9,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    for (const ref of parsed.data.selectedEvidenceRefs) {
-      resolveQuoteFromEvidenceRef(ref);
-    }
-
+    const assets = await generateDiscourseAssets(
+      parsed.data.confirmedProfile,
+      parsed.data.selectedEvidenceRefs,
+    );
     return jsonOk({
-      placeholder: true,
-      message: "话语资产生成尚未接入 LLM。当前仅校验 EvidenceRef 并可按 Chunk 回填原文。",
-      assets: generateAssetsPlaceholder(parsed.data.selectedEvidenceRefs),
+      assets,
       next: {
         material: "POST /api/material/generate",
+        note: "产品流程要求用户确认话语资产后再生成场景材料。",
       },
     });
   } catch (error) {
