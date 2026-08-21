@@ -93,4 +93,51 @@ describe("canonical fragment strip readability", () => {
     assert.doesNotMatch(cleaned, /^三、\s*$/m);
     assert.match(cleaned, /\n/);
   });
+
+  it("掏空双宾语后删除整句，不留下将与融合", () => {
+    const policyQuote =
+      "加快发展数字经济，促进实体经济转型升级，推动数字化转型和产业融合。";
+    const text = "公司明确将数字经济与实体经济融合。我们继续深耕汽车制造。";
+    const cleaned = stripAgainstCanonicalTexts(text, [policyQuote]);
+
+    assert.equal(cleaned.includes("数字经济"), false);
+    assert.equal(cleaned.includes("实体经济"), false);
+    assert.equal(cleaned.includes("将与融合"), false);
+    assert.equal(cleaned.includes("明确将与"), false);
+    assert.equal(cleaned, "我们继续深耕汽车制造。");
+    assert.equal(hasStripArtifacts(cleaned), false);
+    assert.equal(containsCanonicalFragment(cleaned, policyQuote), false);
+  });
+
+  it("掏空在X的时代背景下后删除整句，不留下在的时代背景下", () => {
+    const policyQuote =
+      "加快发展数字经济，促进实体经济转型升级，推动数字化转型和产业融合。";
+    const text = "在数字化转型的时代背景下加快布局。我们继续深耕汽车制造。";
+    const cleaned = stripAgainstCanonicalTexts(text, [policyQuote]);
+
+    assert.equal(cleaned.includes("数字化转型"), false);
+    assert.equal(cleaned.includes("在的时代背景下"), false);
+    assert.equal(cleaned.includes("在的时代"), false);
+    assert.equal(cleaned, "我们继续深耕汽车制造。");
+    assert.equal(hasStripArtifacts(cleaned), false);
+    assert.equal(containsCanonicalFragment(cleaned, policyQuote), false);
+  });
+
+  it("整句只剩语义缺口时删除，完整将与结构不误伤", () => {
+    const policyQuote =
+      "加快发展数字经济，促进实体经济转型升级，推动数字化转型和产业融合。";
+    const emptied = stripAgainstCanonicalTexts(
+      "公司明确将数字经济与实体经济融合。",
+      [policyQuote],
+    );
+    assert.equal(emptied, "");
+    assert.equal(hasStripArtifacts(emptied), false);
+
+    const intact = stripAgainstCanonicalTexts(
+      "企业将与高校共建实验室。现在的市场环境仍然复杂。",
+      [policyQuote],
+    );
+    assert.match(intact, /企业将与高校共建实验室。/);
+    assert.match(intact, /现在的市场环境仍然复杂。/);
+  });
 });

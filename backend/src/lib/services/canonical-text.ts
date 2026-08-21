@@ -11,6 +11,8 @@ const HEADING_START = /^[一二三四五六七八九十]+、/;
 const HEADING_END = /[一二三四五六七八九十]+、$/;
 const PREP_END = /(在|对|就|从|以)$/;
 const LOC_START = /^(层面|方面|中|上|下|时|过程中)/;
+const SEMANTIC_HOLE_RE =
+  /(?:将|把|以)(?:与|和|及)(?:融合|结合|统一|对接|联动|贯通)|(?<![现所])在的[\u3400-\u9fff]*?(?:时代)?背景|(?:对|就|从)的[\u3400-\u9fff]+(?:下|中|里|上)/;
 
 function longestCanonicalFragment(haystack: string, canonical: string): string {
   let best = "";
@@ -125,13 +127,31 @@ function cleanupReadableText(text: string): string {
     .trim();
 }
 
+export function hasSemanticHole(text: string): boolean {
+  return SEMANTIC_HOLE_RE.test(text);
+}
+
+function dropBrokenSentences(text: string): string {
+  if (!text) {
+    return text;
+  }
+  const kept = text.split("\n").map((line) => {
+    if (!hasSemanticHole(line)) {
+      return line;
+    }
+    const sentences = line.match(/[^。！？!?]+[。！？!?]?/g) ?? [line];
+    return sentences.filter((sentence) => !hasSemanticHole(sentence)).join("");
+  });
+  return cleanupReadableText(kept.join("\n"));
+}
+
 export function repairStrippedText(text: string): string {
   const parts = text.split(STRIP_GAP);
   let merged = parts[0] ?? "";
   for (let index = 1; index < parts.length; index += 1) {
     merged = repairJunction(merged, parts[index] ?? "");
   }
-  return cleanupReadableText(merged);
+  return dropBrokenSentences(cleanupReadableText(merged));
 }
 
 /** 剥离后非引用文本不应留下挖空空格、顿号连词残缺或连续标点。 */
@@ -155,6 +175,9 @@ export function hasStripArtifacts(text: string): boolean {
     return true;
   }
   if (/^[、，：]|[、，：]$/.test(text)) {
+    return true;
+  }
+  if (hasSemanticHole(text)) {
     return true;
   }
   return false;
