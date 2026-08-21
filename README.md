@@ -8,9 +8,13 @@
 
 ## 当前阶段
 
-**M0：Repository Bootstrap（项目初始化）**
+**语料切分：Canonical Document → Chunk**
 
-当前仅完成仓库结构、设计文档整理与协作基线准备，尚未进入业务开发。
+已从 75 篇 Canonical 生成 Chunk，结果在 `corpus/chunks/`。尚未 Embedding / LanceDB。
+
+```bash
+python scripts/chunker/chunk.py
+```
 
 ## 文档入口
 
