@@ -122,6 +122,7 @@ function assetsState(): WorkspaceState {
   return workspaceReducer(selectedState(), {
     type: "ASSETS_LOADED",
     assets: makeAssets(),
+    requestChunkIds: ["c1"],
   });
 }
 
@@ -204,6 +205,7 @@ describe("workspace 状态机", () => {
     let state = workspaceReducer(selectedState(), {
       type: "ASSETS_LOADED",
       assets: emptyAssets(),
+      requestChunkIds: ["c1"],
     });
     state = workspaceReducer(state, {
       type: "CONFIRM_ASSETS",
@@ -211,6 +213,56 @@ describe("workspace 状态机", () => {
     });
     assert.equal(state.assetsConfirmed, false);
     assert.ok(state.error?.includes("话语资产为空"));
+  });
+
+  it("资产响应的勾选快照不匹配时丢弃结果并恢复可操作", () => {
+    let state = selectedState();
+    state = workspaceReducer(state, { type: "REQUEST", key: "assets" });
+    state = workspaceReducer(state, {
+      type: "ASSETS_LOADED",
+      assets: makeAssets(),
+      requestChunkIds: ["c1", "c2"],
+    });
+    assert.equal(state.assets, null);
+    assert.equal(state.pending, null);
+    assert.equal(state.viewing, "speeches");
+    assert.ok(state.notice?.includes("丢弃"));
+  });
+
+  it("勾选快照匹配（顺序无关）时正常写入资产", () => {
+    let state = workspaceReducer(selectedState(), {
+      type: "TOGGLE_EVIDENCE",
+      chunkId: "c2",
+    });
+    state = workspaceReducer(state, {
+      type: "ASSETS_LOADED",
+      assets: makeAssets(),
+      requestChunkIds: ["c2", "c1"],
+    });
+    assert.ok(state.assets);
+    assert.equal(state.viewing, "assets");
+  });
+
+  it("资产标题为空时 reducer 拒绝确认", () => {
+    const assets = makeAssets();
+    assets.technologyInnovation[0]!.title = "  ";
+    const state = workspaceReducer(assetsState(), {
+      type: "CONFIRM_ASSETS",
+      assets,
+    });
+    assert.equal(state.assetsConfirmed, false);
+    assert.ok(state.error?.includes("标题或正文为空"));
+  });
+
+  it("资产企业表达为空（仅剩引用块）时 reducer 拒绝确认", () => {
+    const assets = makeAssets();
+    assets.technologyInnovation[0]!.text = "\n\n【引用】\n演示占位文本 c1";
+    const state = workspaceReducer(assetsState(), {
+      type: "CONFIRM_ASSETS",
+      assets,
+    });
+    assert.equal(state.assetsConfirmed, false);
+    assert.ok(state.error?.includes("标题或正文为空"));
   });
 
   it("修改画像：推荐、勾选、资产、材料全部失效", () => {

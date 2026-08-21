@@ -115,10 +115,11 @@ export function Workspace() {
   async function handleGenerateAssets() {
     if (!state.profile || state.selectedChunkIds.length === 0) return;
     const selectedEvidenceRefs = getSelectedEvidenceRefs(state);
+    const requestChunkIds = selectedEvidenceRefs.map((ref) => ref.chunkId);
     dispatch({ type: "REQUEST", key: "assets" });
     try {
       const { assets } = await generateAssets(state.profile, selectedEvidenceRefs);
-      dispatch({ type: "ASSETS_LOADED", assets });
+      dispatch({ type: "ASSETS_LOADED", assets, requestChunkIds });
     } catch (error) {
       dispatch({ type: "FAIL", message: errorMessage(error) });
     }
@@ -516,11 +517,13 @@ function relevanceTone(relevance: SpeechRecommendation["relevance"]) {
 function SpeechCard({
   item,
   selected,
+  disabled,
   profileValueById,
   onToggle,
 }: {
   item: SpeechRecommendation;
   selected: boolean;
+  disabled: boolean;
   profileValueById: Map<string, string>;
   onToggle: () => void;
 }) {
@@ -537,9 +540,10 @@ function SpeechCard({
         <input
           type="checkbox"
           checked={selected}
+          disabled={disabled}
           onChange={onToggle}
           aria-label={`选择证据 ${item.title}`}
-          className="mt-1.5 h-4 w-4 shrink-0 accent-[#9c2b1a]"
+          className="mt-1.5 h-4 w-4 shrink-0 accent-[#9c2b1a] disabled:cursor-not-allowed disabled:opacity-50"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -655,6 +659,7 @@ function SpeechesStage({
               key={item.chunkId}
               item={item}
               selected={state.selectedChunkIds.includes(item.chunkId)}
+              disabled={state.pending !== null}
               profileValueById={profileValueById}
               onToggle={() => onToggle(item.chunkId)}
             />

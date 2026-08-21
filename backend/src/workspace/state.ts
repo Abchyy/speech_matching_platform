@@ -8,6 +8,7 @@ import type {
   Scenario,
   SpeechRecommendation,
 } from "../lib/schemas";
+import { splitAssetText } from "./api";
 import {
   PROFILE_DIMENSION_KEYS,
   type AssetDimensionKey,
@@ -70,7 +71,12 @@ export type WorkspaceAction =
   | { type: "CONFIRM_PROFILE"; profile: EnterpriseProfile }
   | { type: "RECOMMENDATIONS_LOADED"; recommendations: SpeechRecommendation[] }
   | { type: "TOGGLE_EVIDENCE"; chunkId: string }
-  | { type: "ASSETS_LOADED"; assets: DiscourseAssets }
+  | {
+      type: "ASSETS_LOADED";
+      assets: DiscourseAssets;
+      /** 发起请求时的勾选快照，用于丢弃过期响应。 */
+      requestChunkIds: string[];
+    }
   | {
       type: "UPDATE_ASSET";
       dimension: AssetDimensionKey;
@@ -278,7 +284,20 @@ export function workspaceReducer(
       }
       return next;
     }
-    case "ASSETS_LOADED":
+    case "ASSETS_LOADED": {
+      const current = [...state.selectedChunkIds].sort();
+      const requested = [...action.requestChunkIds].sort();
+      const matches =
+        current.length === requested.length &&
+        current.every((id, index) => id === requested[index]);
+      if (!matches) {
+        return {
+          ...state,
+          pending: null,
+          notice: "证据勾选在生成期间已变化，已丢弃过期的资产结果。",
+          error: null,
+        };
+      }
       return {
         ...state,
         pending: null,
@@ -289,6 +308,7 @@ export function workspaceReducer(
         notice: null,
         error: null,
       };
+    }
     case "UPDATE_ASSET": {
       if (!state.assets) return state;
       const items = state.assets[action.dimension].map((item) =>
@@ -318,13 +338,25 @@ export function workspaceReducer(
       };
     }
     case "CONFIRM_ASSETS": {
-      const total =
-        action.assets.technologyInnovation.length +
-        action.assets.industryValue.length +
-        action.assets.socialValue.length +
-        action.assets.developmentPositioning.length;
-      if (total === 0) {
+      const all = [
+        ...action.assets.technologyInnovation,
+        ...action.assets.industryValue,
+        ...action.assets.socialValue,
+        ...action.assets.developmentPositioning,
+      ];
+      if (all.length === 0) {
         return { ...state, error: "话语资产为空：请至少保留一条资产后再确认。" };
+      }
+      const hasIncomplete = all.some(
+        (asset) =>
+          asset.title.trim().length === 0 ||
+          splitAssetText(asset.text).enterprise.trim().length === 0,
+      );
+      if (hasIncomplete) {
+        return {
+          ...state,
+          error: "存在标题或正文为空的资产，请补全或删除后再确认。",
+        };
       }
       return {
         ...state,
