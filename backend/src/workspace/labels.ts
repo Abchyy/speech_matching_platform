@@ -1,4 +1,4 @@
-import type { EnterpriseProfile, Scenario } from "../lib/schemas";
+import type { DiscourseAssets, EnterpriseProfile, Scenario } from "../lib/schemas";
 
 export const SAMPLE_COMPANY_DESCRIPTION =
   "我们是一家做工业具身智能的创业公司，主要面向汽车制造场景，通过视觉语言模型和机器人控制技术提升柔性生产能力。";
@@ -24,12 +24,23 @@ export const PROFILE_DIMENSION_KEYS = PROFILE_DIMENSIONS.map(
   (dimension) => dimension.key,
 ) as ProfileDimensionKey[];
 
-export const ASSET_DIMENSION_LABELS = [
-  "技术创新表达",
-  "产业价值表达",
-  "社会价值表达",
-  "发展定位表达",
-] as const;
+export const ASSET_DIMENSIONS = [
+  { key: "technologyInnovation", label: "技术创新表达" },
+  { key: "industryValue", label: "产业价值表达" },
+  { key: "socialValue", label: "社会价值表达" },
+  { key: "developmentPositioning", label: "发展定位表达" },
+] as const satisfies ReadonlyArray<{
+  key: keyof Pick<
+    DiscourseAssets,
+    | "technologyInnovation"
+    | "industryValue"
+    | "socialValue"
+    | "developmentPositioning"
+  >;
+  label: string;
+}>;
+
+export type AssetDimensionKey = (typeof ASSET_DIMENSIONS)[number]["key"];
 
 export const SCENARIO_OPTIONS: ReadonlyArray<{
   key: Scenario;

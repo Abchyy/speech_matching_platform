@@ -1,13 +1,22 @@
 import type {
+  DiscourseAsset,
+  DiscourseAssets,
   EnterpriseProfile,
+  EvidenceRef,
+  GeneratedMaterial,
   ProfileItem,
+  Scenario,
   SpeechRecommendation,
 } from "../lib/schemas";
-import { PROFILE_DIMENSION_KEYS, type ProfileDimensionKey } from "./labels";
+import {
+  PROFILE_DIMENSION_KEYS,
+  type AssetDimensionKey,
+  type ProfileDimensionKey,
+} from "./labels";
 
 export type StageId = "input" | "profile" | "speeches" | "assets" | "material";
 
-export type PendingKey = "profile" | "recommend" | null;
+export type PendingKey = "profile" | "recommend" | "assets" | "material" | null;
 
 export type WorkspaceState = {
   description: string;
@@ -15,6 +24,11 @@ export type WorkspaceState = {
   profileConfirmed: boolean;
   recommendations: SpeechRecommendation[];
   selectedChunkIds: string[];
+  assets: DiscourseAssets | null;
+  assetsConfirmed: boolean;
+  scenario: Scenario | null;
+  additionalRequirements: string;
+  material: GeneratedMaterial | null;
   pending: PendingKey;
   error: string | null;
   notice: string | null;
@@ -27,6 +41,11 @@ export const initialWorkspaceState: WorkspaceState = {
   profileConfirmed: false,
   recommendations: [],
   selectedChunkIds: [],
+  assets: null,
+  assetsConfirmed: false,
+  scenario: null,
+  additionalRequirements: "",
+  material: null,
   pending: null,
   error: null,
   notice: null,
@@ -51,14 +70,25 @@ export type WorkspaceAction =
   | { type: "CONFIRM_PROFILE"; profile: EnterpriseProfile }
   | { type: "RECOMMENDATIONS_LOADED"; recommendations: SpeechRecommendation[] }
   | { type: "TOGGLE_EVIDENCE"; chunkId: string }
+  | { type: "ASSETS_LOADED"; assets: DiscourseAssets }
+  | {
+      type: "UPDATE_ASSET";
+      dimension: AssetDimensionKey;
+      id: string;
+      patch: Partial<Pick<DiscourseAsset, "title" | "text">>;
+    }
+  | { type: "REMOVE_ASSET"; dimension: AssetDimensionKey; id: string }
+  | { type: "CONFIRM_ASSETS"; assets: DiscourseAssets }
+  | { type: "SET_SCENARIO"; scenario: Scenario }
+  | { type: "SET_REQUIREMENTS"; value: string }
+  | { type: "MATERIAL_LOADED"; material: GeneratedMaterial }
   | { type: "SET_VIEWING"; stage: StageId };
 
 const STAGE_ORDER: StageId[] = ["input", "profile", "speeches", "assets", "material"];
 
 export function furthestStage(state: WorkspaceState): StageId {
-  // B + 2b：勾选证据最远解锁到话语资产待接入页；
-  // 场景材料在资产确认（闸门 3，待后端接口接入）之前保持锁定。
-  if (state.selectedChunkIds.length > 0) return "assets";
+  if (state.assets && state.assetsConfirmed) return "material";
+  if (state.assets) return "assets";
   if (state.recommendations.length > 0) return "speeches";
   if (state.profile) return "profile";
   return "input";
@@ -68,27 +98,57 @@ export function canViewStage(state: WorkspaceState, stage: StageId): boolean {
   return STAGE_ORDER.indexOf(stage) <= STAGE_ORDER.indexOf(furthestStage(state));
 }
 
+export function getSelectedEvidenceRefs(state: WorkspaceState): EvidenceRef[] {
+  return state.recommendations
+    .filter((item) => state.selectedChunkIds.includes(item.chunkId))
+    .map((item) => item.evidenceRef);
+}
+
 function newItemId(): string {
   return `user_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function clearFromRecommendations() {
+  return {
+    recommendations: [] as SpeechRecommendation[],
+    selectedChunkIds: [] as string[],
+    assets: null,
+    assetsConfirmed: false,
+    material: null,
+  };
+}
+
+function clearFromAssets() {
+  return {
+    assets: null,
+    assetsConfirmed: false,
+    material: null,
+  };
+}
+
+function clearMaterial() {
+  return { material: null };
+}
+
 /**
- * 上游失效机制（对应技术架构 §22）：画像被修改后，
- * 讲话推荐、证据勾选全部作废，必须重新确认画像后再次检索。
+ * 上游失效机制（技术架构 §22）：
+ * 画像变化 → 推荐 / 勾选 / 资产 / 材料全部作废；
+ * 勾选变化 → 资产 / 材料作废；
+ * 资产或场景变化 → 材料作废。
  */
-function invalidateDownstream(state: WorkspaceState): WorkspaceState {
+function invalidateAfterProfileChange(state: WorkspaceState): WorkspaceState {
   const hadDownstream =
     state.profileConfirmed ||
     state.recommendations.length > 0 ||
-    state.selectedChunkIds.length > 0;
+    state.selectedChunkIds.length > 0 ||
+    state.assets !== null;
   return {
     ...state,
     profileConfirmed: false,
-    recommendations: [],
-    selectedChunkIds: [],
+    ...clearFromRecommendations(),
     viewing: "profile",
     notice: hadDownstream
-      ? "画像已修改：讲话推荐与证据勾选已失效，请重新确认画像。"
+      ? "画像已修改：讲话推荐、证据勾选与话语资产已失效，请重新确认画像。"
       : state.notice,
     error: null,
   };
@@ -115,8 +175,7 @@ export function workspaceReducer(
         pending: null,
         profile: action.profile,
         profileConfirmed: false,
-        recommendations: [],
-        selectedChunkIds: [],
+        ...clearFromRecommendations(),
         viewing: "profile",
         notice: null,
         error: null,
@@ -133,7 +192,7 @@ export function workspaceReducer(
             }
           : item,
       );
-      return invalidateDownstream({
+      return invalidateAfterProfileChange({
         ...state,
         profile: { ...state.profile, [action.dimension]: items },
       });
@@ -146,7 +205,7 @@ export function workspaceReducer(
         origin: "explicit",
         confidence: "high",
       };
-      return invalidateDownstream({
+      return invalidateAfterProfileChange({
         ...state,
         profile: {
           ...state.profile,
@@ -156,7 +215,7 @@ export function workspaceReducer(
     }
     case "REMOVE_PROFILE_ITEM": {
       if (!state.profile) return state;
-      return invalidateDownstream({
+      return invalidateAfterProfileChange({
         ...state,
         profile: {
           ...state.profile,
@@ -190,6 +249,7 @@ export function workspaceReducer(
         pending: null,
         recommendations: action.recommendations,
         selectedChunkIds: [],
+        ...clearFromAssets(),
         viewing: "speeches",
         notice: null,
         error: null,
@@ -198,13 +258,104 @@ export function workspaceReducer(
       const selected = state.selectedChunkIds.includes(action.chunkId)
         ? state.selectedChunkIds.filter((id) => id !== action.chunkId)
         : [...state.selectedChunkIds, action.chunkId];
-      const viewing =
-        selected.length === 0 &&
-        (state.viewing === "assets" || state.viewing === "material")
-          ? "speeches"
-          : state.viewing;
-      return { ...state, selectedChunkIds: selected, viewing, error: null };
+      const hadAssets = state.assets !== null || state.material !== null;
+      const next: WorkspaceState = {
+        ...state,
+        selectedChunkIds: selected,
+        ...clearFromAssets(),
+        error: null,
+        notice: hadAssets
+          ? "证据勾选已变化：话语资产与场景材料已失效，请重新生成话语资产。"
+          : state.notice,
+      };
+      if (
+        selected.length === 0 ||
+        ((state.viewing === "assets" || state.viewing === "material") && hadAssets)
+      ) {
+        if (next.viewing === "assets" || next.viewing === "material") {
+          next.viewing = "speeches";
+        }
+      }
+      return next;
     }
+    case "ASSETS_LOADED":
+      return {
+        ...state,
+        pending: null,
+        assets: action.assets,
+        assetsConfirmed: false,
+        ...clearMaterial(),
+        viewing: "assets",
+        notice: null,
+        error: null,
+      };
+    case "UPDATE_ASSET": {
+      if (!state.assets) return state;
+      const items = state.assets[action.dimension].map((item) =>
+        item.id === action.id ? { ...item, ...action.patch } : item,
+      );
+      return {
+        ...state,
+        assets: { ...state.assets, [action.dimension]: items },
+        assetsConfirmed: false,
+        ...clearMaterial(),
+        error: null,
+      };
+    }
+    case "REMOVE_ASSET": {
+      if (!state.assets) return state;
+      return {
+        ...state,
+        assets: {
+          ...state.assets,
+          [action.dimension]: state.assets[action.dimension].filter(
+            (item) => item.id !== action.id,
+          ),
+        },
+        assetsConfirmed: false,
+        ...clearMaterial(),
+        error: null,
+      };
+    }
+    case "CONFIRM_ASSETS": {
+      const total =
+        action.assets.technologyInnovation.length +
+        action.assets.industryValue.length +
+        action.assets.socialValue.length +
+        action.assets.developmentPositioning.length;
+      if (total === 0) {
+        return { ...state, error: "话语资产为空：请至少保留一条资产后再确认。" };
+      }
+      return {
+        ...state,
+        assets: action.assets,
+        assetsConfirmed: true,
+        viewing: "material",
+        notice: null,
+        error: null,
+      };
+    }
+    case "SET_SCENARIO":
+      return {
+        ...state,
+        scenario: action.scenario,
+        ...clearMaterial(),
+        error: null,
+      };
+    case "SET_REQUIREMENTS":
+      return {
+        ...state,
+        additionalRequirements: action.value,
+        ...clearMaterial(),
+        error: null,
+      };
+    case "MATERIAL_LOADED":
+      return {
+        ...state,
+        pending: null,
+        material: action.material,
+        error: null,
+      };
     case "SET_VIEWING":
       if (!canViewStage(state, action.stage)) return state;
       return { ...state, viewing: action.stage, error: null };

@@ -1,17 +1,29 @@
 "use client";
 
-import { useMemo, useReducer } from "react";
-import type { SpeechRecommendation } from "../lib/schemas";
+import { useMemo, useReducer, useState } from "react";
+import type {
+  DiscourseAsset,
+  GeneratedMaterial,
+  SpeechRecommendation,
+} from "../lib/schemas";
 import {
   ApiError,
+  assetEnterpriseText,
+  assetsAreComplete,
+  countAssets,
+  generateAssets,
+  generateMaterial,
   generateProfile,
+  normalizeAssetsForSubmit,
   profileHasItems,
   profileItemCount,
   recommendSpeeches,
   sanitizeProfile,
+  splitAssetText,
+  updateAssetText,
 } from "./api";
 import {
-  ASSET_DIMENSION_LABELS,
+  ASSET_DIMENSIONS,
   CONFIDENCE_LABEL,
   DEMO_CORPUS_NOTICE,
   ORIGIN_LABEL,
@@ -24,6 +36,7 @@ import {
 import {
   canViewStage,
   furthestStage,
+  getSelectedEvidenceRefs,
   initialWorkspaceState,
   workspaceReducer,
   type StageId,
@@ -60,12 +73,14 @@ export function Workspace() {
     return map;
   }, [state.profile]);
 
-  const selectedRecommendations = useMemo(
-    () =>
-      state.recommendations.filter((item) =>
-        state.selectedChunkIds.includes(item.chunkId),
-      ),
-    [state.recommendations, state.selectedChunkIds],
+  const recommendationByChunkId = useMemo(
+    () => new Map(state.recommendations.map((item) => [item.chunkId, item])),
+    [state.recommendations],
+  );
+
+  const hasDemoEvidence = useMemo(
+    () => state.recommendations.some((item) => item.isDemoPlaceholder),
+    [state.recommendations],
   );
 
   async function handleGenerateProfile() {
@@ -97,10 +112,51 @@ export function Workspace() {
     }
   }
 
+  async function handleGenerateAssets() {
+    if (!state.profile || state.selectedChunkIds.length === 0) return;
+    const selectedEvidenceRefs = getSelectedEvidenceRefs(state);
+    dispatch({ type: "REQUEST", key: "assets" });
+    try {
+      const { assets } = await generateAssets(state.profile, selectedEvidenceRefs);
+      dispatch({ type: "ASSETS_LOADED", assets });
+    } catch (error) {
+      dispatch({ type: "FAIL", message: errorMessage(error) });
+    }
+  }
+
+  function handleConfirmAssets() {
+    if (!state.assets) return;
+    dispatch({
+      type: "CONFIRM_ASSETS",
+      assets: normalizeAssetsForSubmit(state.assets),
+    });
+  }
+
+  async function handleGenerateMaterial() {
+    if (!state.profile || !state.assets || !state.assetsConfirmed || !state.scenario) {
+      return;
+    }
+    const selectedEvidenceRefs = getSelectedEvidenceRefs(state);
+    const requirements = state.additionalRequirements.trim();
+    dispatch({ type: "REQUEST", key: "material" });
+    try {
+      const { material } = await generateMaterial({
+        confirmedProfile: state.profile,
+        selectedEvidenceRefs,
+        confirmedAssets: state.assets,
+        scenario: state.scenario,
+        additionalRequirements: requirements.length > 0 ? requirements : undefined,
+      });
+      dispatch({ type: "MATERIAL_LOADED", material });
+    } catch (error) {
+      dispatch({ type: "FAIL", message: errorMessage(error) });
+    }
+  }
+
   return (
     <div className="min-h-screen">
       <div className="paper-grain" aria-hidden />
-      <Header />
+      <Header showDemoBadge={hasDemoEvidence} />
       <main className="mx-auto grid max-w-6xl gap-8 px-5 py-8 md:grid-cols-[230px_minmax(0,1fr)] md:py-12">
         <StepRail state={state} onView={(stage) => dispatch({ type: "SET_VIEWING", stage })} />
         <section className="min-w-0">
@@ -123,23 +179,32 @@ export function Workspace() {
             <SpeechesStage
               state={state}
               profileValueById={profileValueById}
+              hasDemoEvidence={hasDemoEvidence}
               onToggle={(chunkId) => dispatch({ type: "TOGGLE_EVIDENCE", chunkId })}
               onRetry={handleConfirmAndRecommend}
               onBackToProfile={() => dispatch({ type: "SET_VIEWING", stage: "profile" })}
-              onNext={() => dispatch({ type: "SET_VIEWING", stage: "assets" })}
+              onGenerateAssets={handleGenerateAssets}
               onClearError={() => dispatch({ type: "CLEAR_ERROR" })}
+              onClearNotice={() => dispatch({ type: "CLEAR_NOTICE" })}
             />
           ) : null}
           {state.viewing === "assets" ? (
             <AssetsStage
               state={state}
-              selected={selectedRecommendations}
+              profileValueById={profileValueById}
+              dispatch={dispatch}
               onBack={() => dispatch({ type: "SET_VIEWING", stage: "speeches" })}
+              onRegenerate={handleGenerateAssets}
+              onConfirm={handleConfirmAssets}
             />
           ) : null}
           {state.viewing === "material" ? (
             <MaterialStage
+              state={state}
+              recommendationByChunkId={recommendationByChunkId}
+              dispatch={dispatch}
               onBack={() => dispatch({ type: "SET_VIEWING", stage: "assets" })}
+              onGenerate={handleGenerateMaterial}
             />
           ) : null}
         </section>
@@ -148,7 +213,7 @@ export function Workspace() {
   );
 }
 
-function Header() {
+function Header({ showDemoBadge }: { showDemoBadge: boolean }) {
   return (
     <header className="border-b border-line/70 bg-paper-3/70">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4">
@@ -162,9 +227,11 @@ function Header() {
         </div>
         <div className="flex items-center gap-2">
           <Badge tone="neutral">M1 本地演示</Badge>
-          <span title={DEMO_CORPUS_NOTICE}>
-            <Badge tone="amber">演示语料 · 占位文本</Badge>
-          </span>
+          {showDemoBadge ? (
+            <span title={DEMO_CORPUS_NOTICE}>
+              <Badge tone="amber">演示语料 · 占位文本</Badge>
+            </span>
+          ) : null}
         </div>
       </div>
     </header>
@@ -179,6 +246,10 @@ function isStageDone(state: WorkspaceState, id: StageId): boolean {
       return state.profileConfirmed;
     case "speeches":
       return state.selectedChunkIds.length > 0;
+    case "assets":
+      return state.assetsConfirmed;
+    case "material":
+      return state.material !== null;
     default:
       return false;
   }
@@ -200,7 +271,6 @@ function StepRail({
           const locked = !canViewStage(state, id);
           const current = state.viewing === id;
           const done = !current && isStageDone(state, id);
-          const pendingBackend = id === "assets" || id === "material";
           return (
             <li key={stage.id} className="min-w-[150px] md:min-w-0">
               <button
@@ -229,16 +299,19 @@ function StepRail({
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink">
                     {stage.label}
-                    {pendingBackend ? <Badge tone="neutral">待接入</Badge> : null}
                   </span>
                   <span className="mt-0.5 block text-[11px] leading-snug text-ink-soft">
                     {locked
                       ? id === "material"
-                        ? "待资产确认（闸门 3 待接口接入）"
-                        : `完成「${STAGES[index - 1]?.label ?? "上一步"}」后解锁`
+                        ? "待资产确认"
+                        : id === "assets"
+                          ? "生成话语资产后解锁"
+                          : `完成「${STAGES[index - 1]?.label ?? "上一步"}」后解锁`
                       : stage.gate
                         ? `人工闸门：${stage.gate}`
-                        : "自然语言输入"}
+                        : id === "material"
+                          ? "场景选择 + 生成"
+                          : "自然语言输入"}
                   </span>
                 </span>
               </button>
@@ -321,7 +394,7 @@ function ProfileStage({
       <StageHeader
         eyebrow="Step 2 · 企业画像"
         title="系统如何理解你的公司"
-        description="以下为五维结构化画像。你可以修改、删除或补充任意条目；只有点击确认后，系统才会基于确认画像检索讲话证据。修改已确认画像将使下游推荐与勾选失效。"
+        description="以下为五维结构化画像。你可以修改、删除或补充任意条目；只有点击确认后，系统才会基于确认画像检索讲话证据。修改已确认画像将使下游推荐、勾选、资产与材料全部失效。"
       />
       {state.notice ? (
         <Banner tone="amber" title="下游已失效" onClose={() => dispatch({ type: "CLEAR_NOTICE" })}>
@@ -516,33 +589,45 @@ function SpeechCard({
 function SpeechesStage({
   state,
   profileValueById,
+  hasDemoEvidence,
   onToggle,
   onRetry,
   onBackToProfile,
-  onNext,
+  onGenerateAssets,
   onClearError,
+  onClearNotice,
 }: {
   state: WorkspaceState;
   profileValueById: Map<string, string>;
+  hasDemoEvidence: boolean;
   onToggle: (chunkId: string) => void;
   onRetry: () => void;
   onBackToProfile: () => void;
-  onNext: () => void;
+  onGenerateAssets: () => void;
   onClearError: () => void;
+  onClearNotice: () => void;
 }) {
   const loading = state.pending === "recommend";
+  const generatingAssets = state.pending === "assets";
   return (
     <div className="space-y-6">
       <StageHeader
         eyebrow="Step 3 · 讲话推荐"
         title="与企业方向相关的讲话证据"
-        description="每条推荐包含原文片段、出处、时间、关键词与推荐理由。勾选即确认 Chunk 级 EvidenceRef，后续话语资产与材料生成将仅基于你勾选的证据。"
+        description="每条推荐包含原文片段、出处、时间、关键词与推荐理由。勾选即确认 Chunk 级 EvidenceRef，话语资产与材料生成将仅基于你勾选的证据。"
       />
-      <Banner tone="amber" title="演示语料提示">
-        {DEMO_CORPUS_NOTICE}
-      </Banner>
+      {hasDemoEvidence ? (
+        <Banner tone="amber" title="演示语料提示">
+          {DEMO_CORPUS_NOTICE}
+        </Banner>
+      ) : null}
+      {state.notice ? (
+        <Banner tone="amber" title="下游已失效" onClose={onClearNotice}>
+          {state.notice}
+        </Banner>
+      ) : null}
       {state.error ? (
-        <Banner tone="seal" title="推荐失败" onClose={onClearError}>
+        <Banner tone="seal" title="操作未完成" onClose={onClearError}>
           {state.error}
         </Banner>
       ) : null}
@@ -578,7 +663,7 @@ function SpeechesStage({
       )}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 pt-5">
         <div className="flex items-center gap-3">
-          <GhostButton onClick={onBackToProfile} disabled={loading}>
+          <GhostButton onClick={onBackToProfile} disabled={loading || generatingAssets}>
             ← 返回企业画像
           </GhostButton>
           <span className="text-sm text-ink-soft">
@@ -586,118 +671,409 @@ function SpeechesStage({
           </span>
         </div>
         <PrimaryButton
-          onClick={onNext}
+          onClick={onGenerateAssets}
+          loading={generatingAssets}
           disabled={state.selectedChunkIds.length === 0 || loading}
           title={
             state.selectedChunkIds.length === 0 ? "至少勾选 1 条讲话证据" : undefined
           }
         >
-          查看话语资产阶段 →
+          生成话语资产
         </PrimaryButton>
       </div>
       <p className="text-xs leading-relaxed text-ink-soft">
-        闸门 2：勾选证据。系统不会默认把全部推荐视为企业正式立场；你可以随时取消并重新选择。
+        闸门 2：勾选证据。系统不会默认把全部推荐视为企业正式立场；勾选变化会使已生成的话语资产与场景材料失效。
       </p>
+    </div>
+  );
+}
+
+function AssetCard({
+  asset,
+  disabled,
+  profileValueById,
+  onChangeTitle,
+  onChangeEnterprise,
+  onRemove,
+}: {
+  asset: DiscourseAsset;
+  disabled: boolean;
+  profileValueById: Map<string, string>;
+  onChangeTitle: (value: string) => void;
+  onChangeEnterprise: (value: string) => void;
+  onRemove: () => void;
+}) {
+  const { quoteSuffix } = splitAssetText(asset.text);
+  const matchedProfileValues = asset.profileEvidenceIds
+    .map((id) => profileValueById.get(id))
+    .filter((value): value is string => Boolean(value));
+  return (
+    <div className="rounded-xl border border-line/70 bg-paper-3/70 p-4">
+      <div className="flex items-start gap-3">
+        <input
+          value={asset.title}
+          disabled={disabled}
+          onChange={(event) => onChangeTitle(event.target.value)}
+          aria-label="资产标题"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-paper-3 px-3 py-2 text-sm font-medium text-ink outline-none transition-colors focus:border-seal/50 disabled:opacity-60"
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onRemove}
+          className="shrink-0 pt-2 text-[11px] text-ink-soft underline-offset-2 transition-colors hover:text-seal hover:underline disabled:opacity-50"
+        >
+          删除
+        </button>
+      </div>
+      <textarea
+        value={assetEnterpriseText(asset)}
+        rows={4}
+        disabled={disabled}
+        onChange={(event) => onChangeEnterprise(event.target.value)}
+        aria-label="资产正文（企业表达）"
+        className="mt-3 w-full resize-y rounded-lg border border-line bg-paper-3 px-3 py-2 text-sm leading-relaxed text-ink outline-none transition-colors focus:border-seal/50 disabled:opacity-60"
+      />
+      {quoteSuffix ? (
+        <div className="mt-3">
+          <Badge tone="seal">总书记原文 · 程序回填 · 只读</Badge>
+          <blockquote className="mt-2 whitespace-pre-line rounded-lg border-l-2 border-seal/60 bg-paper-2/50 pl-4 pr-3 py-3 font-serif text-sm leading-relaxed text-ink">
+            {quoteSuffix.trim()}
+          </blockquote>
+        </div>
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-soft">
+        <span>证据：{asset.evidenceRefs.map((ref) => ref.chunkId).join("、") || "无"}</span>
+        {matchedProfileValues.length > 0 ? (
+          <span>对应画像：{matchedProfileValues.join("；")}</span>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function AssetsStage({
   state,
-  selected,
+  profileValueById,
+  dispatch,
   onBack,
+  onRegenerate,
+  onConfirm,
 }: {
   state: WorkspaceState;
-  selected: SpeechRecommendation[];
+  profileValueById: Map<string, string>;
+  dispatch: React.Dispatch<import("./state").WorkspaceAction>;
   onBack: () => void;
+  onRegenerate: () => void;
+  onConfirm: () => void;
 }) {
+  const assets = state.assets;
+  const busy = state.pending !== null;
+  if (!assets) {
+    return (
+      <div className="space-y-6">
+        <StageHeader
+          eyebrow="Step 4 · 企业话语资产"
+          title="话语资产生成"
+          description="基于已确认企业画像与已勾选讲话证据生成的可复用企业正式表达。"
+        />
+        <Card className="p-8">
+          <p className="text-sm leading-relaxed text-ink-soft">
+            当前没有已生成的话语资产。请返回讲话推荐页勾选证据后生成。
+          </p>
+          <div className="mt-4">
+            <GhostButton onClick={onBack}>← 返回讲话推荐</GhostButton>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+  const total = countAssets(assets);
+  const complete = assetsAreComplete(assets);
   return (
     <div className="space-y-6">
       <StageHeader
         eyebrow="Step 4 · 企业话语资产"
-        title="话语资产生成"
-        description="本步骤将基于已确认企业画像与已勾选讲话证据，生成可复用的企业正式表达。"
+        title="可复用的企业正式表达"
+        description="以下表达仅基于已确认画像与你勾选的讲话证据生成，可在多种政企沟通材料中反复调用。你可以修改标题与正文、删除条目；「【引用】」区块为总书记原文，由程序按 EvidenceRef 回填，只读不可改。"
       />
-      <Banner tone="amber" title="后端生成接口待接入">
-        按已冻结工作流，这里将生成四维话语资产（
-        {ASSET_DIMENSION_LABELS.join(" / ")}
-        ），总书记原文由程序按 EvidenceRef 从 Canonical Chunk 回填。当前接口尚未接入，本页不生成、不手写、不伪造任何资产内容。
-      </Banner>
-      <Card className="p-5">
-        <h3 className="font-serif text-base font-semibold text-ink">已确认的上游输入</h3>
-        <p className="mt-2 text-sm text-ink-soft">
-          企业画像：共 {state.profile ? profileItemCount(state.profile) : 0} 条（已确认）
-        </p>
-        <p className="mt-1 text-sm text-ink-soft">
-          讲话证据：共 {selected.length} 条（已勾选，Chunk 级 EvidenceRef）
-        </p>
-        <ul className="mt-4 space-y-3">
-          {selected.map((item) => (
-            <li
-              key={item.chunkId}
-              className="rounded-xl border border-line/70 bg-paper-3/70 p-4"
-            >
-              <blockquote className="border-l-2 border-seal/60 pl-3 font-serif text-sm leading-relaxed text-ink">
-                {item.quote}
-              </blockquote>
-              <p className="mt-2 text-xs text-ink-soft">
-                {item.title} · {item.source} · {item.date ?? "日期待考"}
-                {item.isDemoPlaceholder ? " · 演示占位文本" : ""}
-              </p>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      {state.notice ? (
+        <Banner tone="amber" title="提示" onClose={() => dispatch({ type: "CLEAR_NOTICE" })}>
+          {state.notice}
+        </Banner>
+      ) : null}
+      {state.error ? (
+        <Banner tone="seal" title="操作未完成" onClose={() => dispatch({ type: "CLEAR_ERROR" })}>
+          {state.error}
+        </Banner>
+      ) : null}
+      {!complete ? (
+        <Banner tone="amber" title="暂不能确认">
+          每条资产都需要非空的标题与正文，且至少保留一条资产；请补全或删除空条目。
+        </Banner>
+      ) : null}
+      <div className="space-y-4">
+        {ASSET_DIMENSIONS.map((dimension) => {
+          const items = assets[dimension.key];
+          return (
+            <Card key={dimension.key} className="p-5">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="font-serif text-base font-semibold text-ink">
+                  {dimension.label}
+                </h3>
+                <span className="text-xs text-ink-soft">{items.length} 条</span>
+              </div>
+              <div className="mt-4 space-y-4">
+                {items.map((asset) => (
+                  <AssetCard
+                    key={asset.id}
+                    asset={asset}
+                    disabled={busy}
+                    profileValueById={profileValueById}
+                    onChangeTitle={(value) =>
+                      dispatch({
+                        type: "UPDATE_ASSET",
+                        dimension: dimension.key,
+                        id: asset.id,
+                        patch: { title: value },
+                      })
+                    }
+                    onChangeEnterprise={(value) =>
+                      dispatch({
+                        type: "UPDATE_ASSET",
+                        dimension: dimension.key,
+                        id: asset.id,
+                        patch: { text: updateAssetText(asset, value).text },
+                      })
+                    }
+                    onRemove={() =>
+                      dispatch({
+                        type: "REMOVE_ASSET",
+                        dimension: dimension.key,
+                        id: asset.id,
+                      })
+                    }
+                  />
+                ))}
+                {items.length === 0 ? (
+                  <p className="text-xs text-ink-soft">
+                    该维度无资产生成（证据不足时系统不会强行凑数）。
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 pt-5">
-        <GhostButton onClick={onBack}>← 返回调整讲话勾选</GhostButton>
-        <PrimaryButton disabled title="话语资产生成接口接入后开放">
-          确认话语资产（待接口接入）
-        </PrimaryButton>
+        <GhostButton onClick={onBack} disabled={busy}>
+          ← 返回调整讲话勾选
+        </GhostButton>
+        <div className="flex items-center gap-3">
+          <GhostButton onClick={onRegenerate} disabled={busy}>
+            重新生成
+          </GhostButton>
+          <PrimaryButton
+            onClick={onConfirm}
+            disabled={!complete || busy}
+            title={complete ? undefined : "存在空标题或空正文的资产"}
+          >
+            确认话语资产{total > 0 ? `（${total} 条）` : ""}
+          </PrimaryButton>
+        </div>
       </div>
       <p className="text-xs leading-relaxed text-ink-soft">
-        闸门 3：确认话语资产。该人工确认节点保留但暂不可用；接口接入并完成确认前，不会进入材料生成。
+        闸门 3：确认话语资产。确认后才能进入场景材料生成；确认后再修改资产将使已生成的材料失效。
       </p>
     </div>
   );
 }
 
-function MaterialStage({ onBack }: { onBack: () => void }) {
+function MaterialBody({ body }: { body: string }) {
+  const paragraphs = body.split(/\n{2,}/).filter((part) => part.trim().length > 0);
+  return (
+    <div className="space-y-4">
+      {paragraphs.map((paragraph, index) =>
+        paragraph.trimStart().startsWith("【引用】") ? (
+          <blockquote
+            key={index}
+            className="whitespace-pre-line rounded-lg border-l-2 border-seal/60 bg-paper-2/50 py-3 pl-4 pr-3 font-serif text-[15px] leading-relaxed text-ink"
+          >
+            {paragraph.trim()}
+          </blockquote>
+        ) : (
+          <p
+            key={index}
+            className="whitespace-pre-line text-[15px] leading-relaxed text-ink"
+          >
+            {paragraph.trim()}
+          </p>
+        ),
+      )}
+    </div>
+  );
+}
+
+function MaterialView({
+  material,
+  recommendationByChunkId,
+}: {
+  material: GeneratedMaterial;
+  recommendationByChunkId: Map<string, SpeechRecommendation>;
+}) {
+  const [copied, setCopied] = useState(false);
+  const scenarioLabel =
+    SCENARIO_OPTIONS.find((option) => option.key === material.scenario)?.label ??
+    material.scenario;
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(`${material.title}\n\n${material.body}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Badge tone="moss">{scenarioLabel}</Badge>
+        <GhostButton onClick={handleCopy}>{copied ? "已复制 ✓" : "复制材料"}</GhostButton>
+      </div>
+      <h3 className="mt-4 font-serif text-xl font-semibold leading-snug text-ink">
+        {material.title}
+      </h3>
+      <div className="mt-4 border-t border-line/60 pt-4">
+        <MaterialBody body={material.body} />
+      </div>
+      <div className="mt-6 rounded-xl border border-line/70 bg-paper-2/40 p-4">
+        <p className="text-xs font-medium text-ink">
+          证据链：复用资产 {material.usedAssetIds.length} 条 · 引用讲话证据{" "}
+          {material.usedEvidenceRefs.length} 条
+        </p>
+        <ul className="mt-2 space-y-1.5">
+          {material.usedEvidenceRefs.map((ref) => {
+            const recommendation = recommendationByChunkId.get(ref.chunkId);
+            return (
+              <li key={ref.chunkId} className="text-[11px] leading-relaxed text-ink-soft">
+                {recommendation
+                  ? `${recommendation.title} · ${recommendation.source} · ${recommendation.date ?? "日期待考"}`
+                  : ref.chunkId}
+                {recommendation?.isDemoPlaceholder ? "（演示占位文本）" : ""}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </Card>
+  );
+}
+
+function MaterialStage({
+  state,
+  recommendationByChunkId,
+  dispatch,
+  onBack,
+  onGenerate,
+}: {
+  state: WorkspaceState;
+  recommendationByChunkId: Map<string, SpeechRecommendation>;
+  dispatch: React.Dispatch<import("./state").WorkspaceAction>;
+  onBack: () => void;
+  onGenerate: () => void;
+}) {
+  const generating = state.pending === "material";
+  if (!state.assetsConfirmed || !state.assets) return null;
   return (
     <div className="space-y-6">
       <StageHeader
         eyebrow="Step 5 · 场景化材料"
-        title="场景化材料生成"
-        description="本步骤将在话语资产确认后，结合具体沟通场景生成完整文字材料。"
+        title="为具体沟通场景生成完整材料"
+        description="选择场景并补充本次具体情况（可选）。材料将继承已确认画像、已勾选证据与已确认话语资产，总书记原文由程序按 EvidenceRef 原样回填。"
       />
-      <Banner tone="amber" title="后端生成接口待接入">
-        材料生成将以「已确认画像 + 已勾选证据 + 已确认话语资产 + 场景」为输入，直接引用由程序按
-        EvidenceRef 原样回填。当前接口尚未接入，本页不生成任何材料。
-      </Banner>
+      {state.error ? (
+        <Banner tone="seal" title="生成失败" onClose={() => dispatch({ type: "CLEAR_ERROR" })}>
+          {state.error}
+        </Banner>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-3">
-        {SCENARIO_OPTIONS.map((scenario) => (
-          <Card key={scenario.key} className="p-5 opacity-70">
-            <h3 className="font-serif text-base font-semibold text-ink">{scenario.label}</h3>
-            <p className="mt-1 text-xs font-medium text-ink">{scenario.output}</p>
-            <p className="mt-2 text-xs leading-relaxed text-ink-soft">{scenario.hint}</p>
-          </Card>
-        ))}
+        {SCENARIO_OPTIONS.map((scenario) => {
+          const active = state.scenario === scenario.key;
+          return (
+            <button
+              key={scenario.key}
+              type="button"
+              disabled={generating}
+              onClick={() => dispatch({ type: "SET_SCENARIO", scenario: scenario.key })}
+              className={`rounded-2xl border p-5 text-left transition-all duration-300 disabled:opacity-60 ${
+                active
+                  ? "border-seal/50 bg-paper-3 ring-1 ring-seal/30"
+                  : "border-line/70 bg-paper-3/60 hover:border-ink/25"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-serif text-base font-semibold text-ink">
+                  {scenario.label}
+                </span>
+                {active ? <Badge tone="seal">已选择</Badge> : null}
+              </span>
+              <span className="mt-1 block text-xs font-medium text-ink">
+                {scenario.output}
+              </span>
+              <span className="mt-2 block text-xs leading-relaxed text-ink-soft">
+                {scenario.hint}
+              </span>
+            </button>
+          );
+        })}
       </div>
       <Card className="p-5">
+        <label className="block text-xs font-medium text-ink" htmlFor="requirements">
+          补充本次沟通的具体情况（可选）
+        </label>
         <textarea
-          disabled
+          id="requirements"
+          value={state.additionalRequirements}
           rows={3}
-          placeholder="补充本次沟通的具体情况（待接口接入后开放）"
-          className="w-full resize-y rounded-xl border border-line bg-paper-2/50 p-4 text-sm text-ink-soft outline-none"
+          disabled={generating}
+          onChange={(event) =>
+            dispatch({ type: "SET_REQUIREMENTS", value: event.target.value })
+          }
+          placeholder="例如：下周参加区里的人工智能企业座谈会，作为创始人做 3 分钟左右的企业介绍……"
+          className="mt-2 w-full resize-y rounded-xl border border-line bg-paper-3 p-4 text-sm leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-soft/50 focus:border-seal/50 disabled:opacity-60"
         />
       </Card>
+      {generating ? (
+        <Card className="p-10">
+          <div className="flex flex-col items-center gap-3 text-ink-soft">
+            <Spinner label="正在生成场景材料" />
+            <p className="text-xs">基于已确认话语资产组织成文，可能需要数十秒……</p>
+          </div>
+        </Card>
+      ) : state.material ? (
+        <MaterialView
+          material={state.material}
+          recommendationByChunkId={recommendationByChunkId}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 pt-5">
-        <GhostButton onClick={onBack}>← 返回话语资产阶段</GhostButton>
-        <PrimaryButton disabled title="需先完成话语资产确认（待接口接入）">
-          生成场景材料（待接口接入）
+        <GhostButton onClick={onBack} disabled={generating}>
+          ← 返回话语资产
+        </GhostButton>
+        <PrimaryButton
+          onClick={onGenerate}
+          loading={generating}
+          disabled={!state.scenario}
+          title={state.scenario ? undefined : "请先选择场景"}
+        >
+          {state.material ? "重新生成材料" : "生成场景材料"}
         </PrimaryButton>
       </div>
       <p className="text-xs leading-relaxed text-ink-soft">
-        前置条件：完成闸门 3（话语资产确认）。当前该闸门待后端接口接入，因此材料生成保持锁定。
+        更换场景或修改补充要求会使当前材料失效；材料中的总书记原文与出处均可按
+        EvidenceRef 追溯。
       </p>
     </div>
   );

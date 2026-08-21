@@ -20,5 +20,7 @@ M1 Development
 - 语料采集：Raw Capture 75 篇；Canonical `corpus/cleaned/` 75 篇（含 12 篇去重对照副本）
 - 运行时接入 `corpus/cleaned/`：当前后端 Chunker 生成 Chunk，本机 Qwen Embedding + LanceDB 索引
 
+- M1-C.2 前端完整闭环：接入真实资产/材料生成接口；Step 4 资产逐条编辑（引用块只读）与确认闸门、Step 5 三场景材料生成与证据链展示；四级失效规则（画像→全下游、勾选→资产/材料、资产/场景→材料）
+
 下一步：
-前后端联调：启用并验证话语资产与场景材料；Retrieval Quality Improvement 仍可并行评估
+演示打磨与真实场景验证；Retrieval Quality Improvement 仍可并行评估
