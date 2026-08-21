@@ -1,8 +1,8 @@
 # 后端 Vertical Slice
 
-企业输入 → 画像结构化 → Embedding 向量检索 → DeepSeek Rerank → 已选 EvidenceRef → 四维话语资产。
+企业输入 → 画像结构化 → Embedding 向量检索 → DeepSeek Rerank → 已选 EvidenceRef → 四维话语资产 → 场景材料。
 
-当前画像生成仍为 mock；讲话匹配与话语资产已接入 DeepSeek。DEMO 文本**不是**总书记讲话原文。
+当前画像生成仍为 mock；讲话匹配、话语资产与场景材料已接入 DeepSeek。DEMO 文本**不是**总书记讲话原文。
 
 ## 启动
 
@@ -26,9 +26,10 @@ npm run typecheck
 npm run retrieve:demo
 npm run recommend:demo
 npm run assets:demo
+npm run material:demo
 ```
 
-`assets:demo` 会用已确认画像与已选 EvidenceRef 生成四维话语资产，并由程序回填 Canonical 原文。
+`material:demo` 会用已确认画像、已选 EvidenceRef 和已确认话语资产生成场景材料，并由程序回填 Canonical 原文。
 
 ## API
 
@@ -39,7 +40,7 @@ npm run assets:demo
 | POST | `/api/profile/generate` | 企业画像（mock） |
 | POST | `/api/speeches/recommend` | 向量召回 + Rerank 推荐 + Evidence |
 | POST | `/api/assets/generate` | 四维话语资产（DeepSeek + Evidence 回填） |
-| POST | `/api/material/generate` | 场景材料（占位） |
+| POST | `/api/material/generate` | 场景材料（DeepSeek + Evidence 回填） |
 
 ## 调用示例
 

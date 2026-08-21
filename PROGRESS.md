@@ -15,6 +15,7 @@ M1 Development
 - M1-B.2 Embedding + Vector Retrieval：Qwen Embedding → LanceDB → 语义检索 → EvidenceRef
 - M1-B.3 DeepSeek Rerank：Top-K Canonical Chunk 重排 + 结构化推荐理由，接入推荐接口
 - M1-C.1 话语资产：已确认画像 + 已选 EvidenceRef → DeepSeek 四维 DiscourseAssets，原文程序回填
+- M1-D.1 场景材料：已确认画像 + 已选 EvidenceRef + 已确认话语资产 + 场景 → DeepSeek GeneratedMaterial，原文程序回填
 - 语料采集：Raw Capture 75 篇；Canonical `corpus/cleaned/` 75 篇（含 12 篇去重对照副本）
 
 下一步：

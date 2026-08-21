@@ -5,11 +5,12 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
-    "test": "tsx --test src/lib/corpus/ingestion.test.ts src/lib/corpus/chunk-repository.test.ts src/lib/services/evidence.test.ts src/lib/services/profile.test.ts src/lib/services/matching.test.ts src/lib/services/retrieval.test.ts src/lib/services/rerank.test.ts src/lib/services/assets.test.ts",
+    "test": "tsx --test src/lib/corpus/ingestion.test.ts src/lib/corpus/chunk-repository.test.ts src/lib/services/evidence.test.ts src/lib/services/profile.test.ts src/lib/services/matching.test.ts src/lib/services/retrieval.test.ts src/lib/services/rerank.test.ts src/lib/services/canonical-text.test.ts src/lib/services/assets.test.ts src/lib/services/material.test.ts",
     "typecheck": "tsc --noEmit",
     "retrieve:demo": "tsx scripts/demo-retrieval.ts",
     "recommend:demo": "tsx scripts/demo-recommend.ts",
-    "assets:demo": "tsx scripts/demo-assets.ts"
+    "assets:demo": "tsx scripts/demo-assets.ts",
+    "material:demo": "tsx scripts/demo-material.ts"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.37.1",

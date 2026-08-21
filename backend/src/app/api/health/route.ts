@@ -10,6 +10,7 @@ export async function GET() {
     embeddingModel: embeddingConfig.model,
     rerankerModel: deepseekConfig.model,
     assetsGenerator: true,
+    materialGenerator: true,
     workflowStages,
     endpoints: {
       match: "POST /api/match",
