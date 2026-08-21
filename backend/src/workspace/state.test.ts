@@ -115,11 +115,19 @@ describe("workspace 状态机", () => {
     assert.ok(state.notice?.includes("已失效"));
   });
 
-  it("勾选证据后解锁话语资产与场景材料页", () => {
+  it("勾选证据后解锁话语资产页，但场景材料保持锁定", () => {
     const state = selectedState();
-    assert.equal(furthestStage(state), "material");
+    assert.equal(furthestStage(state), "assets");
     assert.equal(canViewStage(state, "assets"), true);
-    assert.equal(canViewStage(state, "material"), true);
+    assert.equal(canViewStage(state, "material"), false);
+  });
+
+  it("未确认资产不能进入场景材料页", () => {
+    let state = selectedState();
+    state = workspaceReducer(state, { type: "SET_VIEWING", stage: "assets" });
+    assert.equal(state.viewing, "assets");
+    state = workspaceReducer(state, { type: "SET_VIEWING", stage: "material" });
+    assert.equal(state.viewing, "assets");
   });
 
   it("取消全部勾选时，若正在资产页则退回讲话推荐页", () => {

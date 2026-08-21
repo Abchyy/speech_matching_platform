@@ -135,7 +135,6 @@ export function Workspace() {
               state={state}
               selected={selectedRecommendations}
               onBack={() => dispatch({ type: "SET_VIEWING", stage: "speeches" })}
-              onNext={() => dispatch({ type: "SET_VIEWING", stage: "material" })}
             />
           ) : null}
           {state.viewing === "material" ? (
@@ -234,12 +233,12 @@ function StepRail({
                   </span>
                   <span className="mt-0.5 block text-[11px] leading-snug text-ink-soft">
                     {locked
-                      ? `完成「${STAGES[index - 1]?.label ?? "上一步"}」后解锁`
+                      ? id === "material"
+                        ? "待资产确认（闸门 3 待接口接入）"
+                        : `完成「${STAGES[index - 1]?.label ?? "上一步"}」后解锁`
                       : stage.gate
                         ? `人工闸门：${stage.gate}`
-                        : id === "material"
-                          ? "依赖资产确认"
-                          : "自然语言输入"}
+                        : "自然语言输入"}
                   </span>
                 </span>
               </button>
@@ -607,12 +606,10 @@ function AssetsStage({
   state,
   selected,
   onBack,
-  onNext,
 }: {
   state: WorkspaceState;
   selected: SpeechRecommendation[];
   onBack: () => void;
-  onNext: () => void;
 }) {
   return (
     <div className="space-y-6">
@@ -653,12 +650,9 @@ function AssetsStage({
       </Card>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 pt-5">
         <GhostButton onClick={onBack}>← 返回调整讲话勾选</GhostButton>
-        <div className="flex items-center gap-3">
-          <GhostButton onClick={onNext}>查看场景材料阶段 →</GhostButton>
-          <PrimaryButton disabled title="话语资产生成接口接入后开放">
-            确认话语资产（待接口接入）
-          </PrimaryButton>
-        </div>
+        <PrimaryButton disabled title="话语资产生成接口接入后开放">
+          确认话语资产（待接口接入）
+        </PrimaryButton>
       </div>
       <p className="text-xs leading-relaxed text-ink-soft">
         闸门 3：确认话语资产。该人工确认节点保留但暂不可用；接口接入并完成确认前，不会进入材料生成。

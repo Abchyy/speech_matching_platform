@@ -56,7 +56,9 @@ export type WorkspaceAction =
 const STAGE_ORDER: StageId[] = ["input", "profile", "speeches", "assets", "material"];
 
 export function furthestStage(state: WorkspaceState): StageId {
-  if (state.selectedChunkIds.length > 0) return "material";
+  // B + 2b：勾选证据最远解锁到话语资产待接入页；
+  // 场景材料在资产确认（闸门 3，待后端接口接入）之前保持锁定。
+  if (state.selectedChunkIds.length > 0) return "assets";
   if (state.recommendations.length > 0) return "speeches";
   if (state.profile) return "profile";
   return "input";
