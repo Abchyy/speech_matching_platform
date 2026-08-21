@@ -4,9 +4,10 @@
 > **项目**：AI黑客松-第二次模拟  
 > **文档状态**：当前技术开发基线 / 可迭代  
 > **适用阶段**：5小时 MVP 开发  
-> **产品依据**：`AI科技企业总书记重要讲话智能匹配平台_PRD_v0.1.md`  
+> **产品依据**：`docs/product_requirement.md`  
 > **技术目标**：以最小必要技术复杂度，稳定跑通“企业画像 → 总书记重要讲话匹配 → 人工勾选 → 企业话语资产 → 场景化文字材料”的完整闭环。  
-> **决策原则**：已人工确认的技术与产品约束可直接沿用；尚未冻结的产品字段、数量、页面形式和实验参数，不得由 Coding Agent 擅自冻结。
+> **决策原则**：已人工确认的技术与产品约束可直接沿用；尚未冻结的产品字段、数量、页面形式和实验参数，不得由 Coding Agent 擅自冻结。  
+> **本版校正**：补充 EvidenceRef、语料四层模型、引用程序回填协议，以及开发阶段可用小规模语料启动技术链路的说明。MVP 已冻结为 Chunk 级 Evidence，不支持 Chunk 内 Span 选择。产品定位、核心工作流与 RAG 技术路线不变。
 
 ---
 
@@ -39,6 +40,8 @@ DeepSeek 生成结构化企业话语资产
         ↓
 DeepSeek 生成最终文字材料
 ```
+
+用户勾选环节在数据协议上落地为确认 `EvidenceRef[]`：检索与勾选以 Chunk 为最小证据单位，后续生成必须基于已确认 Evidence，而不得仅依赖 `speechId`。
 
 架构设计优先保证：
 
@@ -74,34 +77,57 @@ DeepSeek 生成最终文字材料
 
 ## 2.2 原文必须由程序抽取，而不是由 LLM 生成
 
-推荐的实现原则：
+**LLM 不直接生成总书记讲话原文。** 模型只产出结构化字段与企业表达；凡需展示或写入材料的总书记原文，一律由程序按 EvidenceRef 从 Canonical Source 回填。
+
+推荐流程：
+
+```text
+检索
+ ↓
+EvidenceRef
+ ↓
+用户确认
+ ↓
+LLM生成结构化内容
+ ↓
+程序根据 EvidenceRef 回填原文
+```
+
+实现原则：
 
 ```text
 LLM
 ↓
-只返回 chunkId / quote span / evidence id
+只返回 EvidenceRef（speechId / chunkId / startIndex / endIndex）
 ↓
 程序
 ↓
-从权威语料库读取原始字符串
+从 Canonical Chunk 读取原始字符串并 slice
 ↓
-原样展示
+原样展示 / 原样插入材料
 ```
+
+避免：
+
+- 模型自由生成引用；
+- 模型“凭记忆”复述原话；
+- 把 LLM 输出的字符串当作 Canonical Quote。
 
 LLM 不承担“生成总书记原话”的职责。
 
 ## 2.3 直接引用校验
 
-如系统允许引用某个 Chunk 的局部内容，则至少执行：
+MVP 阶段冻结为 Chunk 级 Evidence：用户确认完整 Chunk，不支持 Chunk 内 Span 选择。引用校验仍按 EvidenceRef 从 Chunk `text` 抽取：
 
 ```ts
 canonicalText.includes(quote) === true
 ```
 
-更稳妥的实现是保存：
+正式协议保存为 EvidenceRef：
 
 ```ts
 {
+  speechId: string
   chunkId: string
   startIndex: number
   endIndex: number
@@ -111,14 +137,17 @@ canonicalText.includes(quote) === true
 并由程序直接执行：
 
 ```ts
+const canonicalText = chunk.text
 quote = canonicalText.slice(startIndex, endIndex)
 ```
 
+`startIndex` / `endIndex` 相对于该 Chunk 的 Canonical `text`，而不是整篇 `fullText`。MVP 中确认整个 Chunk，因此 `startIndex = 0` 且 `endIndex = chunk.text.length`。
+
 避免 LLM 重新输出引用字符串。
 
-## 2.4 原始语料只读
+## 2.4 Canonical Document 只读
 
-权威讲话原始语料进入系统后，应视为只读 Canonical Source。
+Raw Capture 可保留采集噪声，但不得作为引用源。讲话正文经清洗确认进入 Canonical Document 后，应视为只读 Canonical Source。
 
 建议在建库时保存 SHA-256：
 
@@ -264,11 +293,51 @@ Next.js Node Runtime
 
 # 6. 总书记讲话语料数据模型
 
-系统区分两个层级：
+系统将语料处理为四层，不得混用：
 
-## 6.1 SpeechDocument
+```text
+Raw Capture
+    ↓
+Canonical Document
+    ↓
+Chunk
+    ↓
+EvidenceRef
+```
 
-代表一篇完整的权威讲话或重要论述来源。
+- **Raw Capture**：原始采集数据，保留抓取现场（含网页噪声、原始 Markdown、采集 metadata）。
+- **Canonical Document**：经过清洗与确认后的权威正文。
+- **Chunk**：从 Canonical Document 派生的检索单元。
+- **EvidenceRef**：用户确认和引用追溯单位。MVP 指向完整 Chunk 对应的 Canonical 文本，偏移基于该 Chunk 的 `text`。
+
+强调：
+
+> **Canonical Document 中的总书记讲话原文不可修改。**
+
+Chunk 与 EvidenceRef 都是派生数据，只能切片或引用 Canonical 正文，不得反向改写原文。
+
+## 6.1 Raw Capture
+
+代表采集阶段落盘的原始记录，不等同于可引用正文。
+
+```ts
+type RawCapture = {
+  speechId: string
+  title: string
+  date: string | null
+  source: string
+  url?: string
+  rawMarkdown: string
+  retrievedAt?: string
+  retrievalKeywords?: string[]
+}
+```
+
+Raw Capture 允许保留网页噪声，供清洗与抽查；不得直接作为 Canonical Quote，也不得作为生成引用源。
+
+## 6.2 SpeechDocument（Canonical Document）
+
+代表一篇经过确认的权威讲话或重要论述正文。
 
 ```ts
 type SpeechDocument = {
@@ -290,11 +359,16 @@ type SpeechDocument = {
 - `source`
 - `fullText`
 
+`fullText` 为 Canonical Quote Source。进入 Canonical 后：
+
+- 不得改写任何一个汉字、数字或标点；
+- 后续 Chunk / EvidenceRef 只能引用或切片，不能回写修改。
+
 `url` 强烈建议保留，但首版是否要求所有记录必须存在 URL，由团队根据语料源人工确认。
 
-## 6.2 SpeechChunk
+## 6.3 SpeechChunk
 
-代表真正进入 Embedding 和向量检索的语义单元。
+代表真正进入 Embedding 和向量检索的语义单元，是检索结果的最小证据单位。
 
 ```ts
 type SpeechChunk = {
@@ -317,10 +391,84 @@ type SpeechChunk = {
 
 其中：
 
-- `text`：Canonical Quote Source，只保存未经改写的原始文本；
+- `text`：从 Canonical Document 按字符原样切出的片段，只保存未经改写的原始文本；
 - `embeddingText`：仅用于检索优化；
 - `vector`：Qwen Embedding 产生的向量；
 - `keywords`：辅助展示 metadata，不属于总书记原话。
+
+推荐列表展示的是候选 Chunk，而不是仅按篇的 Speech。
+
+## 6.4 EvidenceRef
+
+所有总书记讲话引用必须来自可追溯原文。系统用 EvidenceRef 表达“引用了哪一篇、哪一个 Chunk”。
+
+MVP 阶段冻结：
+
+- 采用 Chunk 级 Evidence；
+- 用户确认粒度为完整 Chunk；
+- 不支持 Chunk 内 Span 选择；
+- EvidenceRef 的 offset 基于 Chunk `text`。
+
+```ts
+type EvidenceRef = {
+  speechId: string
+  chunkId: string
+  startIndex: number
+  endIndex: number
+}
+```
+
+字段含义：
+
+- `speechId`：所属 Canonical Document；
+- `chunkId`：所属检索 Chunk；
+- `startIndex` / `endIndex`：相对该 Chunk Canonical `text` 的字符区间（半开区间 `[startIndex, endIndex)`）。
+
+MVP 中确认整个 Chunk，因此固定为：
+
+```ts
+startIndex = 0
+endIndex = chunk.text.length
+```
+
+引用抽取必须由程序执行：
+
+```ts
+quote = chunk.text.slice(startIndex, endIndex)
+```
+
+约束：
+
+1. 检索结果以 Chunk 为最小证据单位；
+2. 用户确认的是 Evidence，而不是仅仅 Speech；
+3. 后续生成流程必须基于已确认 `EvidenceRef[]`；
+4. LLM 不得输出总书记原文，只可返回 EvidenceRef，由程序回填原文。
+
+未来版本可根据产品需求扩展到 Chunk 内 Span 选择；该能力不在 MVP 范围，不得在当前阶段实现。
+
+## 6.5 语料规模与开发启动条件
+
+第一版产品语料库目标保持：
+
+```text
+约100篇总书记讲话语料
+```
+
+该目标用于产品能力覆盖，不删除、不下调。
+
+开发阶段允许先使用：
+
+- 小规模黄金语料；
+- Demo 测试语料；
+
+优先验证：
+
+- 检索；
+- 匹配；
+- 引用；
+- 生成闭环。
+
+约 100 篇完整语料是产品能力扩展目标，**不作为技术链路启动的阻塞条件**。清洗、Chunk、Embedding、LanceDB、EvidenceRef 回填与生成 Pipeline 可在小规模语料上先跑通，再扩展至约 100 篇。
 
 ---
 
@@ -399,7 +547,9 @@ MVP 初始策略：
 ## 8.2 建库阶段
 
 ```text
-SpeechDocument
+Raw Capture
+      ↓
+Canonical SpeechDocument
       ↓
 Chunk
       ↓
@@ -412,7 +562,7 @@ Vector
 LanceDB
 ```
 
-讲话语料仅在首次建库或语料变更时重新 Embedding。
+讲话语料仅在首次建库或语料变更时重新 Embedding。EvidenceRef 不写入建库结果，只在检索与生成时按 Chunk 构造。
 
 ## 8.3 embeddingText
 
@@ -487,7 +637,7 @@ npm run ingest
 流程：
 
 ```text
-读取 corpus/raw
+读取 corpus/raw（Raw Capture）
       ↓
 验证 metadata
       ↓
@@ -505,6 +655,8 @@ Chunk
       ↓
 输出建库统计
 ```
+
+EvidenceRef 不在建库阶段物化。它是检索、用户确认与生成引用时的运行时协议，必须指向已入库的 Canonical Chunk。
 
 正常 Web 启动：
 
@@ -752,6 +904,8 @@ type RerankResult = {
 
 Reranker **不重新生成总书记原文**。
 
+用户勾选后，系统将选中 Chunk 固化为 EvidenceRef。MVP 冻结为确认完整 Chunk（`startIndex = 0`，`endIndex = chunk.text.length`），不支持 Chunk 内 Span 选择。未来版本可根据产品需求扩展，但不在当前实现范围。
+
 前端根据 `chunkId` 从 LanceDB 获取：
 
 - 原文；
@@ -801,15 +955,11 @@ type DiscourseAsset = {
   text: string
 
   profileEvidenceIds: string[]
-  speechEvidenceIds: string[]
-
-  directQuoteSpans?: {
-    chunkId: string
-    startIndex: number
-    endIndex: number
-  }[]
+  evidenceRefs: EvidenceRef[]
 }
 ```
+
+`evidenceRefs` 替代原先笼统的 speech ID 列表。话语资产中如需出现总书记原文，不得把原文写进 LLM 输出的 `text`；由程序按 `evidenceRefs` 从 Canonical Chunk 回填。
 
 ## 16.2 Evidence Mapping
 
@@ -818,7 +968,7 @@ type DiscourseAsset = {
 ```text
 Confirmed Enterprise Profile
 +
-用户选中的 Speech Evidence
+用户确认的 EvidenceRef
 ```
 
 即：
@@ -827,8 +977,10 @@ Confirmed Enterprise Profile
 产业价值表达
       ↑
       ├── 企业画像 evidence
-      └── 总书记原文 evidence
+      └── 总书记原文 EvidenceRef
 ```
+
+后续生成不得仅使用 `speechId` 作为引用依据。
 
 ## 16.3 用户控制
 
@@ -922,12 +1074,13 @@ type GeneratedMaterial = {
 
   usedAssetIds: string[]
   usedSpeechIds: string[]
+  usedEvidenceRefs: EvidenceRef[]
 }
 ```
 
-`body` 为自然语言正文。
+`body` 为自然语言正文。`usedSpeechIds` 仅作为篇级出处列表，可由 `usedEvidenceRefs` 派生。
 
-但如果正文中出现总书记原文，必须通过 Canonical Quote 机制由程序原样插入，不允许 LLM 自行重写。
+如果正文中出现总书记原文，必须通过 EvidenceRef 由程序从 Canonical Source 原样插入，不允许 LLM 自行重写或自由生成引用。
 
 ---
 
@@ -979,7 +1132,7 @@ DeepSeek Rerank
 ```text
 Confirmed Enterprise Profile
 +
-Selected Speech IDs / Canonical Evidence
+Confirmed EvidenceRefs
 ```
 
 输出：
@@ -991,7 +1144,9 @@ Structured DiscourseAssets JSON
 规则：
 
 - 企业事实不得超出画像；
-- 总书记原文不得由模型重写；
+- 总书记原文不得由模型生成或重写；
+- LLM 只返回结构化内容与 EvidenceRef；
+- 程序根据 EvidenceRef 回填原文；
 - 话语资产必须保存 Evidence Mapping。
 
 ## 19.4 Material Generator
@@ -1001,7 +1156,7 @@ Structured DiscourseAssets JSON
 ```text
 Confirmed Enterprise Profile
 +
-Selected Speeches
+Confirmed EvidenceRefs
 +
 Confirmed Discourse Assets
 +
@@ -1019,8 +1174,8 @@ GeneratedMaterial
 规则：
 
 1. 企业事实不能漂移；
-2. 不得擅自加入用户未选择的总书记讲话作为核心依据；
-3. 直接引用必须来自 Canonical Source；
+2. 不得擅自加入用户未确认的 Evidence 作为核心依据；
+3. 直接引用必须来自 Canonical Source，并由程序按 EvidenceRef 回填；
 4. 优先复用已确认话语资产；
 5. 不从零重新发明企业定位。
 
@@ -1036,6 +1191,7 @@ GeneratedMaterial
 
 - EnterpriseProfile；
 - RerankResult；
+- EvidenceRef；
 - DiscourseAssets；
 - GeneratedMaterial 外层 metadata。
 
@@ -1062,7 +1218,7 @@ PROFILE_CONFIRMED
       ↓ 执行检索
 
 RECOMMENDATIONS_READY
-      ↓ 用户勾选
+      ↓ 用户勾选（确认 EvidenceRef，而非仅 Speech）
 
 SPEECHES_SELECTED
       ↓ 生成话语资产
@@ -1082,7 +1238,7 @@ MATERIAL_READY
 Human-in-the-loop 的三个硬节点：
 
 1. 企业画像确认；
-2. 总书记讲话人工勾选；
+2. 总书记讲话证据人工勾选（落地为 Confirmed EvidenceRefs）；
 3. 企业话语资产确认。
 
 AI 不得越过这些节点自动替用户决定。
@@ -1095,8 +1251,8 @@ AI 不得越过这些节点自动替用户决定。
 
 | 用户修改 | 自动失效 |
 |---|---|
-| 企业画像 | 讲话推荐、讲话选择、话语资产、最终材料 |
-| 讲话选择 | 话语资产、最终材料 |
+| 企业画像 | 讲话推荐、证据选择、话语资产、最终材料 |
+| 证据选择（EvidenceRef） | 话语资产、最终材料 |
 | 话语资产 | 最终材料 |
 | 场景/场景要求 | 最终材料 |
 
@@ -1159,6 +1315,7 @@ Qwen Embedding
 
 ```text
 Speech Recommendations
+（候选 Chunk + 可构造的 EvidenceRef）
 ```
 
 ## 23.3 话语资产
@@ -1172,7 +1329,7 @@ POST /api/assets/generate
 ```ts
 {
   confirmedProfile: EnterpriseProfile
-  selectedSpeechIds: string[]
+  selectedEvidenceRefs: EvidenceRef[]
 }
 ```
 
@@ -1193,7 +1350,7 @@ POST /api/material/generate
 ```ts
 {
   confirmedProfile: EnterpriseProfile
-  selectedSpeechIds: string[]
+  selectedEvidenceRefs: EvidenceRef[]
   confirmedAssets: DiscourseAssets
   scenario: string
   additionalRequirements?: string
@@ -1220,7 +1377,7 @@ type WorkspaceState = {
   profileConfirmed: boolean
 
   recommendations: SpeechRecommendation[]
-  selectedSpeechIds: string[]
+  selectedEvidenceRefs: EvidenceRef[]
 
   assets?: DiscourseAssets
   assetsConfirmed: boolean
@@ -1290,6 +1447,7 @@ project/
 │       └── schemas/
 │           ├── profile.ts
 │           ├── speech.ts
+│           ├── evidence.ts
 │           ├── assets.ts
 │           └── material.ts
 │
@@ -1400,7 +1558,7 @@ LanceDB Top-K
 
 > **任何总书记直接引用与 Canonical Source 逐字逐标点完全一致。**
 
-建议写自动测试覆盖。
+引用必须能还原为 EvidenceRef，并由程序 slice 回填，而不是比对 LLM 自行输出的字符串。建议写自动测试覆盖。
 
 ## 29.2 企业画像可信
 
@@ -1415,7 +1573,7 @@ LanceDB Top-K
 
 ## 29.4 Human-in-the-loop 有效
 
-- 用户改变讲话选择后，话语资产有可感知变化；
+- 用户改变已确认 Evidence 后，话语资产有可感知变化；
 - 上游修改导致下游正确失效。
 
 ## 29.5 Evidence Chain
@@ -1425,14 +1583,14 @@ LanceDB Top-K
 ```text
 Enterprise Profile
       ↓
-Selected Speech
+Confirmed EvidenceRef
       ↓
 Discourse Asset
       ↓
 Final Material
 ```
 
-并保留关键证据 ID。
+并保留 `speechId` / `chunkId` / `startIndex` / `endIndex`。最终材料中的总书记原文必须能按 EvidenceRef 追溯到 Canonical Chunk。
 
 ## 29.6 场景差异
 
@@ -1467,7 +1625,12 @@ Final Material
 15. 上游变化使下游依赖结果失效；
 16. 总书记原文不得由 LLM 生成；
 17. 所有总书记原文必须从 Canonical Source 原样抽取；
-18. 总书记直接引用不得修改任何一个字或任何一个标点符号。
+18. 总书记直接引用不得修改任何一个字或任何一个标点符号；
+19. 语料分层为 Raw Capture → Canonical Document → Chunk → EvidenceRef；
+20. 用户确认的是 EvidenceRef，后续生成必须基于已确认 Evidence；
+21. LLM 生成结构化内容后，由程序按 EvidenceRef 回填原文；
+22. 第一版产品语料库目标约 100 篇；开发阶段可用小规模黄金/Demo 语料先跑通技术闭环，100 篇不是 Pipeline 启动阻塞条件；
+23. MVP 采用 Chunk 级 Evidence：用户确认完整 Chunk，不支持 Chunk 内 Span 选择；EvidenceRef 的 offset 基于 Chunk text。
 
 ---
 
@@ -1505,7 +1668,7 @@ Final Material
 在 5 小时 MVP 中，建议按风险优先顺序推进：
 
 ```text
-1. 准备并校验权威讲话语料
+1. 准备并校验权威讲话语料（可用小规模黄金/Demo 语料启动）
         ↓
 2. Chunk + Qwen Embedding + LanceDB 建库
         ↓
@@ -1515,11 +1678,11 @@ Final Material
         ↓
 5. Vector Retrieval + DeepSeek Rerank
         ↓
-6. 推荐讲话卡片 + 人工勾选
+6. 推荐讲话卡片 + 人工勾选（固化 EvidenceRef）
         ↓
-7. Discourse Assets Structured Output
+7. Discourse Assets Structured Output + 原文回填
         ↓
-8. 三场景 Material Generator
+8. 三场景 Material Generator + 原文回填
         ↓
 9. 状态失效机制
         ↓
@@ -1528,7 +1691,9 @@ Final Material
 
 核心原则：
 
-> **先证明语料可靠和匹配有效，再做完整界面。**
+> **先证明语料可靠、匹配有效、引用可追溯，再做完整界面。**
+
+约 100 篇完整语料用于产品能力扩展，不阻塞上述技术链路启动。
 
 ---
 
@@ -1539,7 +1704,8 @@ Final Material
 讲话知识库采用：
 
 ```text
-权威讲话原文
+Raw Capture
+→ Canonical Document
 → 语义 Chunk
 → Qwen3.7 Text Embedding API
 → LanceDB 本地向量库
@@ -1552,7 +1718,7 @@ Confirmed Enterprise Profile
 → Qwen Query Embedding
 → LanceDB Vector Recall
 → DeepSeek V4 Flash Rerank
-→ 人工讲话选择
+→ 人工确认 EvidenceRef
 ```
 
 生成链采用：
@@ -1560,15 +1726,17 @@ Confirmed Enterprise Profile
 ```text
 五维企业画像
 +
-用户选中的权威讲话原文
+用户确认的 EvidenceRef
 →
-四维企业话语资产
+LLM 生成结构化企业话语资产
+→
+程序按 EvidenceRef 回填原文
 →
 人工确认
 →
 三个文字型政企沟通场景
 →
-最终材料
+最终材料（引用同样由程序回填）
 ```
 
 系统始终坚持：
@@ -1577,6 +1745,8 @@ Confirmed Enterprise Profile
 
 > **AI 负责推荐和生成，用户负责正式表达的关键决策。**
 
-> **总书记讲话原文是只读 Canonical Source；任何直接引用必须逐字、逐标点与权威原始语料完全一致，LLM 无权修改。**
+> **总书记讲话原文是只读 Canonical Source；任何直接引用必须逐字、逐标点与权威原始语料完全一致，LLM 无权生成或修改。**
+
+> **用户确认的是 Evidence，而不是仅仅 Speech；后续生成必须基于已确认 EvidenceRef。**
 
 > **MVP 不追求复杂基础设施，只证明“企业画像 → 权威讲话 → 话语资产 → 场景材料”这条工作流能够真实、可信、可控地成立。**
