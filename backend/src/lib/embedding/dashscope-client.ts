@@ -62,6 +62,14 @@ function errorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class DashScopeEmbeddingClient implements EmbeddingClient {
   readonly model = embeddingConfig.model;
 
@@ -69,16 +77,46 @@ export class DashScopeEmbeddingClient implements EmbeddingClient {
     private readonly apiKey = requireDashscopeApiKey(),
     private readonly baseUrl = embeddingConfig.baseUrl,
     private readonly dimensions = embeddingConfig.dimensions,
+    private readonly batchSize = embeddingConfig.batchSize,
   ) {}
 
   async embed(texts: string[], inputType: EmbeddingInputType): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
-    if (isCompatibleMode(this.baseUrl)) {
-      return this.embedCompatible(texts, inputType);
+    const size = Math.max(1, this.batchSize);
+    const vectors: number[][] = [];
+    for (let offset = 0; offset < texts.length; offset += size) {
+      const batch = texts.slice(offset, offset + size);
+      const part = await this.embedBatchWithRetry(batch, inputType);
+      vectors.push(...part);
     }
-    return this.embedNative(texts, inputType);
+    return vectors;
+  }
+
+  private async embedBatchWithRetry(
+    texts: string[],
+    inputType: EmbeddingInputType,
+  ): Promise<number[][]> {
+    const attempts = 5;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return isCompatibleMode(this.baseUrl)
+          ? await this.embedCompatible(texts, inputType)
+          : await this.embedNative(texts, inputType);
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+        const retryable =
+          message.includes("[retryable]") || /fetch failed|network|ECONNRESET|ETIMEDOUT/i.test(message);
+        if (!retryable || attempt === attempts - 1) {
+          throw error;
+        }
+        await sleep(1000 * 2 ** attempt);
+      }
+    }
+    throw lastError;
   }
 
   private async embedCompatible(
@@ -101,9 +139,11 @@ export class DashScopeEmbeddingClient implements EmbeddingClient {
     });
     const payload = (await readJson(response)) as OpenAiEmbeddingResponse;
     if (!response.ok) {
-      throw new EmbeddingError(
-        `Embedding API 调用失败（HTTP ${response.status}）: ${errorMessage(payload, "unknown error")}`,
-      );
+      const message = `Embedding API 调用失败（HTTP ${response.status}）: ${errorMessage(payload, "unknown error")}`;
+      if (isRetryableStatus(response.status)) {
+        throw new EmbeddingError(`${message} [retryable]`);
+      }
+      throw new EmbeddingError(message);
     }
     const items = [...(payload.data ?? [])].sort(
       (left, right) => (left.index ?? 0) - (right.index ?? 0),
@@ -135,9 +175,11 @@ export class DashScopeEmbeddingClient implements EmbeddingClient {
     });
     const payload = (await readJson(response)) as DashscopeEmbeddingResponse;
     if (!response.ok) {
-      throw new EmbeddingError(
-        `Embedding API 调用失败（HTTP ${response.status}）: ${errorMessage(payload, payload.code ?? "unknown error")}`,
-      );
+      const message = `Embedding API 调用失败（HTTP ${response.status}）: ${errorMessage(payload, payload.code ?? "unknown error")}`;
+      if (isRetryableStatus(response.status)) {
+        throw new EmbeddingError(`${message} [retryable]`);
+      }
+      throw new EmbeddingError(message);
     }
     const items = [...(payload.output?.embeddings ?? [])].sort(
       (left, right) => (left.text_index ?? 0) - (right.text_index ?? 0),

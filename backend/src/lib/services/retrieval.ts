@@ -1,7 +1,8 @@
+import { embeddingConfig } from "../config";
 import { defaultChunkRepository, type ChunkRepository } from "../corpus";
 import type { EmbeddingClient } from "../embedding";
 import type { SpeechChunk } from "../schemas";
-import type { VectorSearchHit, VectorStore } from "../vector";
+import { defaultLanceDbUri, type VectorSearchHit, type VectorStore } from "../vector";
 
 export class RetrievalError extends Error {
   constructor(message: string) {
@@ -25,7 +26,7 @@ export async function indexChunks(
   chunks: SpeechChunk[],
   embeddingClient: EmbeddingClient,
   vectorStore: VectorStore,
-): Promise<void> {
+): Promise<{ dimensions: number }> {
   if (chunks.length === 0) {
     throw new RetrievalError("没有可索引的 Canonical Chunk");
   }
@@ -45,6 +46,35 @@ export async function indexChunks(
       vector: vectors[index] ?? [],
     })),
   );
+  return { dimensions: vectors[0]?.length ?? 0 };
+}
+
+export type ChunkIndexStats = {
+  model: string;
+  dimensions: number;
+  batchSize: number;
+  batchCount: number;
+  recordCount: number;
+  uri: string;
+};
+
+export async function indexChunksWithStats(
+  chunks: SpeechChunk[],
+  embeddingClient: EmbeddingClient,
+  vectorStore: VectorStore,
+  uri = defaultLanceDbUri(),
+): Promise<ChunkIndexStats> {
+  const batchSize = Math.max(1, embeddingConfig.batchSize);
+  const { dimensions } = await indexChunks(chunks, embeddingClient, vectorStore);
+  const indexed = await vectorStore.listChunkIds();
+  return {
+    model: embeddingClient.model,
+    dimensions,
+    batchSize,
+    batchCount: Math.ceil(chunks.length / batchSize),
+    recordCount: indexed.length,
+    uri,
+  };
 }
 
 export async function ensureChunkIndex(

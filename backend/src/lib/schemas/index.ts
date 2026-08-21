@@ -20,6 +20,7 @@ export {
   type SpeechRecommendation,
 } from "./speech";
 export {
+  discourseAssetSchema,
   discourseAssetsSchema,
   generateAssetsRequestSchema,
   type DiscourseAsset,

@@ -41,6 +41,14 @@ function parseFrontmatter(block: string): Record<string, unknown> {
 
     const match = line.match(/^([A-Za-z0-9_]+)\s*:\s*(.*)$/);
     if (!match) {
+      const keys = Object.keys(result);
+      const lastKey = keys[keys.length - 1];
+      const previous = lastKey === undefined ? undefined : result[lastKey];
+      if (typeof previous === "string" && line.trim() && !line.trimStart().startsWith("-")) {
+        result[lastKey!] = `${previous} ${line.trim()}`;
+        index += 1;
+        continue;
+      }
       throw new CorpusIngestionError(`无法解析 Canonical Markdown frontmatter: ${line}`);
     }
 
@@ -83,11 +91,18 @@ function asStringList(value: unknown): string[] {
 }
 
 function extractFullText(body: string, title: string): string {
-  let text = body.replace(/^\uFEFF/, "").replace(/^\s+/, "").replace(/\s+$/, "");
-  const heading = `# ${title}`;
-  if (text.startsWith(heading)) {
-    text = text.slice(heading.length).replace(/^\s+/, "");
+  // 只剥 Markdown 外壳（frontmatter 后的 H1），不得用 \s 吃掉正文里的全角空格。
+  let text = body.replace(/^\uFEFF/, "").replace(/^\r?\n+/, "");
+  if (text.startsWith("#")) {
+    const newline = text.search(/\r?\n/);
+    text = newline >= 0 ? text.slice(newline).replace(/^\r?\n+/, "") : "";
+  } else {
+    const heading = `# ${title}`;
+    if (text.startsWith(heading)) {
+      text = text.slice(heading.length).replace(/^\r?\n+/, "");
+    }
   }
+  text = text.replace(/(\r?\n)+$/, "");
   if (!text) {
     throw new CorpusIngestionError("Canonical Markdown 缺少正文");
   }

@@ -8,19 +8,22 @@
 
 ## 当前阶段
 
-**M1 Development / M1-A.1 Backend Vertical Slice**
+**M1 Development：真实 Canonical 语料接入与向量检索**
 
-已建立后端最小可运行链路：企业输入 → 企业画像结构化 → mock 匹配 → EvidenceRef 结果。尚未接入真实语料、向量检索或 LLM。
+Canonical Source 为 `corpus/cleaned/`。运行时 Chunk 由后端 Chunker 从 Canonical 原文生成，不以 `corpus/chunks/` 预切片作为检索源。
 
 ## 本地启动
 
 ```bash
 cd backend
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
 服务地址：`http://localhost:3000`
+
+密钥只放在 `backend/.env.local`，不要提交。本地 LanceDB 位于 `data/lancedb/`，同样不要提交。
 
 ## API 调用示例
 

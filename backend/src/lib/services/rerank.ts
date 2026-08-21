@@ -3,6 +3,14 @@ import { DeepSeekChatClient } from "../llm";
 import type { EnterpriseProfile, ProfileItem, Relevance, SpeechChunk } from "../schemas";
 import { relevanceSchema } from "../schemas";
 import { collectProfileItems } from "./profile";
+import {
+  containsCanonicalFragment,
+  isBlankCanonicalSafeText,
+  MIN_CANONICAL_FRAGMENT_CHARS,
+  stripCanonicalFragments,
+} from "./canonical-text";
+
+export { containsCanonicalFragment, MIN_CANONICAL_FRAGMENT_CHARS };
 
 export class RerankError extends Error {
   constructor(message: string) {
@@ -59,64 +67,12 @@ export type RankedCandidate = {
   profileEvidenceIds: string[];
 };
 
-/** 连续 4 字及以上的 Canonical 子串视为原文片段；更短的共用字不按摘录处理。 */
-export const MIN_CANONICAL_FRAGMENT_CHARS = 4;
-
 const FALLBACK_REASON =
   "该候选与企业画像存在关联。引用原文由程序按 EvidenceRef 回填，不由模型生成。";
 
-function longestCanonicalFragment(haystack: string, canonical: string): string {
-  let best = "";
-  let previous = Array.from({ length: canonical.length + 1 }, () => 0);
-
-  for (let i = 0; i < haystack.length; i += 1) {
-    const current = Array.from({ length: canonical.length + 1 }, () => 0);
-    for (let j = 0; j < canonical.length; j += 1) {
-      if (haystack[i] !== canonical[j]) {
-        continue;
-      }
-      const size = (previous[j] ?? 0) + 1;
-      current[j + 1] = size;
-      if (size > best.length) {
-        best = haystack.slice(i - size + 1, i + 1);
-      }
-    }
-    previous = current;
-  }
-
-  return best;
-}
-
-export function containsCanonicalFragment(
-  reason: string,
-  canonical: string,
-  minLength = MIN_CANONICAL_FRAGMENT_CHARS,
-): boolean {
-  if (!reason || !canonical) {
-    return false;
-  }
-  if (reason.includes(canonical)) {
-    return true;
-  }
-  return longestCanonicalFragment(reason, canonical).length >= minLength;
-}
-
-function isBlankReason(text: string): boolean {
-  return text.replace(/[\s，。；、：,.!！？?\-—（）()「」“”'"]/g, "").length === 0;
-}
-
 export function sanitizeReason(reason: string, chunk: SpeechChunk): string {
-  let cleaned = reason.trim().replace(/\s+/g, " ");
-  const canonical = chunk.text;
-
-  while (containsCanonicalFragment(cleaned, canonical)) {
-    const fragment = cleaned.includes(canonical)
-      ? canonical
-      : longestCanonicalFragment(cleaned, canonical);
-    cleaned = cleaned.split(fragment).join(" ").replace(/\s+/g, " ").trim();
-  }
-
-  if (isBlankReason(cleaned)) {
+  const cleaned = stripCanonicalFragments(reason, chunk.text);
+  if (isBlankCanonicalSafeText(cleaned)) {
     return FALLBACK_REASON;
   }
   return cleaned;

@@ -1,0 +1,192 @@
+{
+  "crawler": {
+    "base_url": "https://jhsjk.people.cn",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "timeout_seconds": 20,
+    "request_interval_min": 2,
+    "request_interval_max": 5,
+    "http_403_retries": 2,
+    "http_403_wait_min": 30,
+    "http_403_wait_max": 60,
+    "max_consecutive_errors": 3,
+    "is_fuzzy": 1,
+    "search_area": 0,
+    "sort_type": 2,
+    "speech_form": "706",
+    "use_speech_form_filter": true,
+    "max_pages_per_keyword": 10
+  },
+  "quality": {
+    "min_body_chars": 200,
+    "min_keyword_hits_in_body": 3,
+    "title_exclude_patterns": [
+      "贺信",
+      "贺电",
+      "致贺信",
+      "致电祝贺",
+      "学习贯彻",
+      "各地",
+      "《求是》杂志发表",
+      "签署通令",
+      "举行会谈",
+      "同.*会谈",
+      "会见",
+      "考察时",
+      "时强调",
+      "发表重要讲话强调",
+      "作出重要指示",
+      "主持召开",
+      "看望慰问",
+      "回信",
+      "评论员",
+      "学习体会",
+      "贯彻落实",
+      "综述"
+    ]
+  },
+  "total_target": 100,
+  "themes": [
+    {
+      "id": "tech_innovation",
+      "name": "科技创新、人工智能与数字经济",
+      "target": 15,
+      "keywords": [
+        "科技创新",
+        "科技自立自强",
+        "关键核心技术",
+        "人工智能",
+        "未来产业",
+        "数字经济",
+        "数字中国",
+        "科技成果转化",
+        "创新驱动发展"
+      ]
+    },
+    {
+      "id": "high_quality_development",
+      "name": "高质量发展、新质生产力与产业升级",
+      "target": 15,
+      "keywords": [
+        "高质量发展",
+        "新质生产力",
+        "新发展格局",
+        "现代化产业体系",
+        "制造强国",
+        "智能制造",
+        "产业转型升级",
+        "产业链供应链",
+        "实体经济"
+      ]
+    },
+    {
+      "id": "private_economy",
+      "name": "民营经济、企业发展与营商环境",
+      "target": 10,
+      "keywords": [
+        "民营经济",
+        "民营企业发展",
+        "企业家精神",
+        "创新创业",
+        "营商环境",
+        "市场主体",
+        "企业信心"
+      ]
+    },
+    {
+      "id": "green_development",
+      "name": "绿色发展、新能源与生态文明",
+      "target": 10,
+      "keywords": [
+        "绿色发展",
+        "生态文明",
+        "绿色低碳",
+        "能源转型",
+        "新能源",
+        "节能减排",
+        "可持续发展"
+      ]
+    },
+    {
+      "id": "rural_revitalization",
+      "name": "乡村振兴与农业现代化",
+      "target": 8,
+      "keywords": [
+        "乡村振兴",
+        "农业强国",
+        "脱贫攻坚",
+        "农业现代化",
+        "农业科技",
+        "粮食安全",
+        "农村产业发展",
+        "城乡融合"
+      ]
+    },
+    {
+      "id": "culture",
+      "name": "文化建设与文旅产业",
+      "target": 8,
+      "keywords": [
+        "文化自信",
+        "文化强国",
+        "中华优秀传统文化",
+        "文化传承",
+        "文旅融合",
+        "文化产业"
+      ]
+    },
+    {
+      "id": "education_talent",
+      "name": "教育、人才与青年创新",
+      "target": 8,
+      "keywords": [
+        "教育强国",
+        "思政课",
+        "人才强国",
+        "科技人才",
+        "青年人才",
+        "创新人才培养",
+        "科教融合"
+      ]
+    },
+    {
+      "id": "party_soe",
+      "name": "党建、国企发展与社会责任",
+      "target": 10,
+      "keywords": [
+        "党的建设",
+        "国有企业",
+        "国有企业党建",
+        "企业文化",
+        "社会责任",
+        "以人民为中心",
+        "共同富裕",
+        "责任担当"
+      ]
+    },
+    {
+      "id": "opening_up",
+      "name": "开放发展与国际合作",
+      "target": 6,
+      "keywords": [
+        "高水平开放",
+        "对外开放",
+        "国际合作",
+        "一带一路",
+        "全球产业合作"
+      ]
+    },
+    {
+      "id": "chinese_modernization",
+      "name": "中国式现代化与综合战略主题",
+      "target": 10,
+      "keywords": [
+        "中国式现代化",
+        "强国建设",
+        "民族复兴",
+        "全面深化改革",
+        "中央经济工作",
+        "经济社会发展"
+      ]
+    }
+  ]
+}

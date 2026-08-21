@@ -50,8 +50,7 @@ describe("vector matching pipeline with rerank", () => {
       assert.equal(item.evidenceRef.startIndex, 0);
       assert.equal(item.evidenceRef.endIndex, chunk.text.length);
       assert.equal(item.quote, chunk.text);
-      assert.equal(item.isDemoPlaceholder, true);
-      assert.match(item.quote, /【演示占位文本，非总书记讲话原文】/);
+      assert.equal(item.isDemoPlaceholder ?? false, false);
       assert.equal(containsCanonicalFragment(item.reason, chunk.text), false);
     }
   });

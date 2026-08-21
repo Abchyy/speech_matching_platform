@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ChunkRepository } from "./chunk-repository";
-import { DemoChunkRepository } from "./demo-chunk-repository";
+import { CanonicalChunkRepository } from "./canonical-chunk-repository";
 import { defaultChunkRepository } from "./index";
 import type { SpeechChunk } from "../schemas";
 import {
@@ -39,8 +39,8 @@ const stubRepository: ChunkRepository = {
 };
 
 describe("ChunkRepository boundary", () => {
-  it("默认实现是 DemoChunkRepository", () => {
-    assert.equal(defaultChunkRepository instanceof DemoChunkRepository, true);
+  it("默认实现是 CanonicalChunkRepository", () => {
+    assert.equal(defaultChunkRepository instanceof CanonicalChunkRepository, true);
     const first = defaultChunkRepository.listAll()[0];
     assert.ok(first);
     assert.ok(defaultChunkRepository.getByChunkId(first.chunkId));

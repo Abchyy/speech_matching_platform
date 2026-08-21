@@ -47,7 +47,6 @@ describe("vector retrieval pipeline", () => {
     assert.equal(evidenceRef.startIndex, 0);
     assert.equal(evidenceRef.endIndex, canonical.text.length);
     assert.equal(resolveQuoteFromEvidenceRef(evidenceRef, chunkRepository), canonical.text);
-    assert.match(top.chunk.text, /【演示占位文本，非总书记讲话原文】/);
   });
 
   it("第二次 ensureChunkIndex 在 Chunk 未变化时跳过重建", async () => {
