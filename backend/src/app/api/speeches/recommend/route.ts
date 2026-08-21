@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const recommendations = recommendSpeeches(parsed.data.confirmedProfile);
+    const recommendations = await recommendSpeeches(parsed.data.confirmedProfile);
     return jsonOk({
       recommendations,
       evidence: toEvidenceList(recommendations),

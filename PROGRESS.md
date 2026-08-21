@@ -12,6 +12,8 @@ M1 Development
 - M1-A.1 后端 Vertical Slice：企业输入 → 画像结构化 → mock 匹配 → Evidence 回填
 - M1-A.2 Evidence 边界修正：强制 Chunk 级 Evidence，抽象 ChunkRepository
 - M1-B.1 Canonical Corpus Ingestion Interface：Canonical Document → Chunk → ChunkRepository
+- M1-B.2 Embedding + Vector Retrieval：Qwen Embedding → LanceDB → 语义检索 → EvidenceRef
+- M1-B.3 DeepSeek Rerank：Top-K Canonical Chunk 重排 + 结构化推荐理由，接入推荐接口
 
 下一步：
-接入 Embedding 与本地向量检索；话语资产与场景材料生成仍为占位接口
+Retrieval Quality Improvement 与话语资产 / 场景材料生成（仍为占位接口）

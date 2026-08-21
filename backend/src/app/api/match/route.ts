@@ -5,7 +5,7 @@ import { generateEnterpriseProfile } from "@/lib/services/profile";
 
 export async function GET() {
   return jsonOk({
-    description: "Vertical Slice 入口：企业信息 → 画像结构化 → mock 匹配 → Evidence 列表。",
+    description: "Vertical Slice 入口：企业信息 → 画像结构化 → 向量检索 → Rerank → Evidence 列表。",
     method: "POST",
     input: {
       rawCompanyDescription: "string",
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
   try {
     const profile = generateEnterpriseProfile(parsed.data);
-    const recommendations = recommendSpeeches(profile);
+    const recommendations = await recommendSpeeches(profile);
 
     return jsonOk({
       profile,
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
         },
       },
       notes: [
-        "当前为 mock Vertical Slice，未接入 Embedding、LanceDB 或 LLM。",
+        "当前匹配已接入 Embedding + 向量检索 + DeepSeek Rerank；画像与生成仍为 mock/占位。",
         "返回的 quote 由程序按 EvidenceRef 从 Demo Chunk 切片回填，不是模型生成。",
         "Demo 语料明确标注为占位文本，不是总书记讲话原文。",
         "产品流程仍要求画像确认后再匹配；本接口仅用于打通后端链路。",

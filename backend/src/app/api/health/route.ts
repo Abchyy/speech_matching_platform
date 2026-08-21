@@ -1,10 +1,14 @@
 import { jsonOk } from "@/lib/http";
-import { appConfig, workflowStages } from "@/lib/config";
+import { appConfig, deepseekConfig, embeddingConfig, workflowStages } from "@/lib/config";
 
 export async function GET() {
   return jsonOk({
     status: "ok",
     mockMode: appConfig.mockMode,
+    vectorRetrieval: true,
+    reranker: true,
+    embeddingModel: embeddingConfig.model,
+    rerankerModel: deepseekConfig.model,
     workflowStages,
     endpoints: {
       match: "POST /api/match",

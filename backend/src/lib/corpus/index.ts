@@ -12,6 +12,7 @@ export { DemoChunkRepository } from "./demo-chunk-repository";
 export { InMemoryChunkRepository } from "./in-memory-chunk-repository";
 export type { IngestionResult } from "./ingestion";
 export {
+  findProjectRoot,
   ingestCanonicalDirectory,
   ingestCanonicalDocuments,
   ingestCanonicalMarkdown,

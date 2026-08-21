@@ -1,26 +1,33 @@
 # 后端 Vertical Slice
 
-M1-A.1 后端骨架：企业输入 → 画像结构化 → mock 匹配 → EvidenceRef 回填。
+企业输入 → 画像结构化 → Embedding 向量检索 → DeepSeek Rerank → EvidenceRef 回填。
 
-当前使用 mock service 与 DEMO 占位语料，不接入真实 Embedding、LanceDB 或 LLM。DEMO 文本**不是**总书记讲话原文。
+当前画像生成仍为 mock；讲话匹配已接入 Qwen Embedding、LanceDB 与 DeepSeek Rerank。DEMO 文本**不是**总书记讲话原文。
 
 ## 启动
 
 ```bash
 cd backend
 npm install
+cp .env.example .env.local   # 填入 DASHSCOPE_API_KEY；DeepSeek 可复用同一把 Model Studio 密钥
 npm run dev
 ```
 
 默认地址：`http://localhost:3000`
 
-## 测试
+密钥只放在 `backend/.env.local`，该文件已被 gitignore，不要提交。
+
+## 测试与 Demo
 
 ```bash
 cd backend
 npm test
 npm run typecheck
+npm run retrieve:demo
+npm run recommend:demo
 ```
+
+`recommend:demo` 会走完整推荐链路：Query → Embedding → Vector Search → DeepSeek Rerank → Canonical Chunk → EvidenceRef。
 
 ## API
 
@@ -29,7 +36,7 @@ npm run typecheck
 | GET | `/api/health` | 健康检查 |
 | POST | `/api/match` | Vertical Slice 入口 |
 | POST | `/api/profile/generate` | 企业画像（mock） |
-| POST | `/api/speeches/recommend` | 讲话推荐 + Evidence（mock） |
+| POST | `/api/speeches/recommend` | 向量召回 + Rerank 推荐 + Evidence |
 | POST | `/api/assets/generate` | 话语资产（占位） |
 | POST | `/api/material/generate` | 场景材料（占位） |
 

@@ -1,43 +1,60 @@
 import { appConfig } from "../config";
 import { defaultChunkRepository, type ChunkRepository } from "../corpus";
+import { DashScopeEmbeddingClient, type EmbeddingClient } from "../embedding";
 import type {
   EnterpriseProfile,
   ProfileItem,
-  Relevance,
   SpeechChunk,
   SpeechRecommendation,
 } from "../schemas";
+import { LanceDbVectorStore, type VectorStore } from "../vector";
 import { resolveQuoteFromChunk, toFullChunkEvidenceRef } from "./evidence";
 import { buildRetrievalText, collectProfileItems } from "./profile";
+import {
+  applyRerank,
+  DeepSeekReranker,
+  type RerankCandidate,
+  type Reranker,
+} from "./rerank";
+import { ensureChunkIndex, retrieveRelevantChunks } from "./retrieval";
 
 type ScoredChunk = {
   chunk: SpeechChunk;
   score: number;
-  matchedKeywords: string[];
-  profileEvidenceIds: string[];
 };
 
-function relevanceFromScore(score: number): Relevance {
-  if (score >= 3) return "strong";
-  if (score >= 2) return "medium";
-  if (score >= 1) return "weak";
-  return "irrelevant";
+export type RecommendSpeechesOptions = {
+  chunkRepository?: ChunkRepository;
+  embeddingClient?: EmbeddingClient;
+  vectorStore?: VectorStore;
+  reranker?: Reranker;
+};
+
+let defaultEmbeddingClient: EmbeddingClient | undefined;
+let defaultVectorStore: VectorStore | undefined;
+let defaultReranker: Reranker | undefined;
+
+function getDefaultEmbeddingClient(): EmbeddingClient {
+  return (defaultEmbeddingClient ??= new DashScopeEmbeddingClient());
 }
 
-function matchedProfileIds(items: ProfileItem[], keywords: string[]): string[] {
+function getDefaultVectorStore(): VectorStore {
+  return (defaultVectorStore ??= new LanceDbVectorStore());
+}
+
+function getDefaultReranker(): Reranker {
+  return (defaultReranker ??= new DeepSeekReranker());
+}
+
+function matchedProfileIds(items: ProfileItem[], chunk: SpeechChunk): string[] {
   return items
-    .filter((entry) => keywords.some((keyword) => entry.value.includes(keyword)))
+    .filter((entry) => {
+      if (chunk.text.includes(entry.value)) return true;
+      return chunk.keywords.some(
+        (keyword) => entry.value.includes(keyword) || keyword.includes(entry.value),
+      );
+    })
     .map((entry) => entry.id);
-}
-
-function scoreChunk(retrievalText: string, items: ProfileItem[], chunk: SpeechChunk): ScoredChunk {
-  const matchedKeywords = chunk.keywords.filter((keyword) => retrievalText.includes(keyword));
-  return {
-    chunk,
-    score: matchedKeywords.length,
-    matchedKeywords,
-    profileEvidenceIds: matchedProfileIds(items, matchedKeywords),
-  };
 }
 
 function dedupeBySpeech(scored: ScoredChunk[]): ScoredChunk[] {
@@ -52,35 +69,58 @@ function dedupeBySpeech(scored: ScoredChunk[]): ScoredChunk[] {
   });
 }
 
-function buildReason(entry: ScoredChunk): string {
-  if (entry.matchedKeywords.length === 0) {
-    return "演示匹配：当前为 mock 检索，该占位语料未与企业画像形成关键词重叠。正式环境将由向量检索与 Rerank 生成推荐理由。";
-  }
-
-  return `演示匹配：占位语料关键词「${entry.matchedKeywords.join("、")}」与企业画像存在主题重叠。正式环境将由向量检索与 Rerank 生成推荐理由，且不得由模型生成原文。`;
-}
-
-export function recommendSpeeches(
+export async function recommendSpeeches(
   profile: EnterpriseProfile,
-  repository: ChunkRepository = defaultChunkRepository,
-): SpeechRecommendation[] {
+  options: RecommendSpeechesOptions = {},
+): Promise<SpeechRecommendation[]> {
+  const chunkRepository = options.chunkRepository ?? defaultChunkRepository;
+  const embeddingClient = options.embeddingClient ?? getDefaultEmbeddingClient();
+  const vectorStore = options.vectorStore ?? getDefaultVectorStore();
+  const reranker = options.reranker ?? getDefaultReranker();
+
+  await ensureChunkIndex(chunkRepository, embeddingClient, vectorStore);
+
   const retrievalText = buildRetrievalText(profile);
   const items = collectProfileItems(profile);
+  const retrieved = await retrieveRelevantChunks(retrievalText, {
+    topK: appConfig.retrievalTopK,
+    embeddingClient,
+    vectorStore,
+    chunkRepository,
+  });
 
-  const ranked = repository
-    .listAll()
-    .map((chunk) => scoreChunk(retrievalText, items, chunk))
-    .sort((left, right) => right.score - left.score);
+  const deduped = dedupeBySpeech(
+    retrieved.map((entry) => ({
+      chunk: entry.chunk,
+      score: entry.score,
+    })),
+  );
 
-  const selected = dedupeBySpeech(ranked)
-    .slice(0, appConfig.recommendationLimit)
-    .filter((entry) => entry.score > 0);
+  const candidates: RerankCandidate[] = deduped.map((entry) => ({
+    chunk: entry.chunk,
+    retrievalScore: entry.score,
+  }));
 
-  const fallback = selected.length > 0 ? selected : dedupeBySpeech(ranked).slice(0, 3);
+  const rerankResult = await reranker.rerank({ profile, candidates });
+  const ranked = applyRerank(
+    candidates,
+    rerankResult,
+    new Set(items.map((item) => item.id)),
+  );
 
-  return fallback.map((entry) => {
+  const preferred = ranked.filter((entry) => entry.relevance !== "irrelevant");
+  const selected = (preferred.length > 0 ? preferred : ranked).slice(
+    0,
+    appConfig.recommendationLimit,
+  );
+
+  return selected.map((entry) => {
     const evidenceRef = toFullChunkEvidenceRef(entry.chunk);
     const quote = resolveQuoteFromChunk(entry.chunk, evidenceRef);
+    const profileEvidenceIds =
+      entry.profileEvidenceIds.length > 0
+        ? entry.profileEvidenceIds
+        : matchedProfileIds(items, entry.chunk);
 
     return {
       chunkId: entry.chunk.chunkId,
@@ -92,9 +132,9 @@ export function recommendSpeeches(
       keywords: entry.chunk.keywords,
       quote,
       evidenceRef,
-      relevance: relevanceFromScore(entry.score),
-      reason: buildReason(entry),
-      profileEvidenceIds: entry.profileEvidenceIds,
+      relevance: entry.relevance,
+      reason: entry.reason,
+      profileEvidenceIds,
       isDemoPlaceholder: entry.chunk.isDemoPlaceholder,
     };
   });

@@ -11,6 +11,10 @@ import {
 } from "../services/evidence";
 import { recommendSpeeches } from "../services/matching";
 import { generateEnterpriseProfile } from "../services/profile";
+import { HashEmbeddingClient } from "../embedding";
+import { InMemoryVectorStore } from "../vector";
+import { ensureChunkIndex } from "../services/retrieval";
+import { IdentityReranker } from "../services/rerank";
 
 const stubChunk: SpeechChunk = {
   chunkId: "stub_chunk_001",
@@ -64,13 +68,22 @@ describe("ChunkRepository boundary", () => {
     );
   });
 
-  it("匹配 Service 可通过注入的 Repository 替换语料来源", () => {
+  it("匹配 Service 可通过注入的 Repository 替换语料来源", async () => {
     const profile = generateEnterpriseProfile({
       rawCompanyDescription: "一家做人工智能的科技公司。",
       techDomains: ["人工智能"],
     });
 
-    const recommendations = recommendSpeeches(profile, stubRepository);
+    const embeddingClient = new HashEmbeddingClient();
+    const vectorStore = new InMemoryVectorStore();
+    await ensureChunkIndex(stubRepository, embeddingClient, vectorStore);
+
+    const recommendations = await recommendSpeeches(profile, {
+      chunkRepository: stubRepository,
+      embeddingClient,
+      vectorStore,
+      reranker: new IdentityReranker(),
+    });
     assert.equal(recommendations.length, 1);
     assert.equal(recommendations[0]?.chunkId, stubChunk.chunkId);
     assert.equal(recommendations[0]?.evidenceRef.startIndex, 0);
