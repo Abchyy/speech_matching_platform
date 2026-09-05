@@ -1,4 +1,12 @@
-export { evidenceRefSchema, type EvidenceRef } from "./evidence";
+export {
+  decodeEvidenceRef,
+  evidenceRefSchema,
+  evidenceRefV1Schema,
+  evidenceRefV2Schema,
+  type EvidenceRef,
+  type EvidenceRefV1,
+  type EvidenceRefV2,
+} from "./evidence";
 export {
   enterpriseInputSchema,
   enterpriseProfileSchema,
@@ -15,6 +23,7 @@ export {
   speechDocumentSchema,
   speechRecommendationSchema,
   type Relevance,
+  type RetrievalScoreBreakdown,
   type SpeechChunk,
   type SpeechDocument,
   type SpeechRecommendation,

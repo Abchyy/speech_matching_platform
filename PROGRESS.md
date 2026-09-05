@@ -1,5 +1,5 @@
 阶段：
-M1 Development
+M2 Evidence / Retrieval Foundation
 
 已完成：
 - 项目目录初始化
@@ -22,5 +22,12 @@ M1 Development
 
 - M1-C.2 前端完整闭环：接入真实资产/材料生成接口；Step 4 资产逐条编辑（引用块只读）与确认闸门、Step 5 三场景材料生成与证据链展示；四级失效规则（画像→全下游、勾选→资产/材料、资产/场景→材料）
 
+- M2：Canonical Chunk Artifact 成为唯一运行时切块事实源（63 篇 / 447 Chunk）
+- M2：EvidenceRef v2（语料/文档/Chunk hash）与 v1 兼容层
+- M2：离线版本化索引构建、发布、回滚；请求路径只读 active index
+- M2：检索内核（Dense / lexical / exact / RRF）与 Xi Speech Adapter 分离
+- M2：正式画像路径接入 DeepSeek；规则 fallback 显式标记
+- M2：检索评测 Harness（provisional / PENDING HUMAN REVIEW）
+
 下一步：
-演示打磨与真实场景验证；Retrieval Quality Improvement 仍可并行评估
+Codex Technical Gate 与真实 Provider E2E（凭据可用时）；人工 relevance gold 仍待确认

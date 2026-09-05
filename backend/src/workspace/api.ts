@@ -12,18 +12,21 @@ import { ASSET_DIMENSIONS, PROFILE_DIMENSION_KEYS, type AssetDimensionKey } from
 export class ApiError extends Error {
   code?: string;
   status: number;
+  requestId?: string;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, requestId?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.requestId = requestId;
   }
 }
 
 type ErrorBody = {
   error?: string;
   message?: string;
+  requestId?: string;
 };
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -48,9 +51,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   if (!response.ok) {
     const errorBody = (payload ?? {}) as ErrorBody;
     throw new ApiError(
-      errorBody.message ?? `请求失败（HTTP ${response.status}）`,
+      errorBody.requestId
+        ? `${errorBody.message ?? `请求失败（HTTP ${response.status}）`}（${errorBody.requestId}）`
+        : (errorBody.message ?? `请求失败（HTTP ${response.status}）`),
       response.status,
       errorBody.error,
+      errorBody.requestId,
     );
   }
 
@@ -59,6 +65,9 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export type GenerateProfileResponse = {
   profile: EnterpriseProfile;
+  generator?: "deepseek" | "rules-fallback" | "test";
+  fallback?: boolean;
+  requestId?: string;
 };
 
 export type RecommendSpeechesResponse = {

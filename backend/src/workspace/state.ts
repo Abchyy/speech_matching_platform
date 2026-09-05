@@ -59,7 +59,7 @@ export type WorkspaceAction =
   | { type: "FAIL"; message: string }
   | { type: "CLEAR_ERROR" }
   | { type: "CLEAR_NOTICE" }
-  | { type: "PROFILE_GENERATED"; profile: EnterpriseProfile }
+  | { type: "PROFILE_GENERATED"; profile: EnterpriseProfile; notice?: string }
   | {
       type: "UPDATE_PROFILE_ITEM";
       dimension: ProfileDimensionKey;
@@ -183,7 +183,7 @@ export function workspaceReducer(
         profileConfirmed: false,
         ...clearFromRecommendations(),
         viewing: "profile",
-        notice: null,
+        notice: action.notice ?? null,
         error: null,
       };
     case "UPDATE_PROFILE_ITEM": {

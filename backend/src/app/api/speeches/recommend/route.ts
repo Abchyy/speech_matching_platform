@@ -1,6 +1,7 @@
 import { jsonError, jsonOk, parseJsonRequest } from "@/lib/http";
+import { IndexError } from "@/lib/index";
 import { recommendSpeechesRequestSchema } from "@/lib/schemas";
-import { recommendSpeeches, toEvidenceList } from "@/lib/services/matching";
+import { recommendSpeechesWithDiagnostics, toEvidenceList } from "@/lib/services/matching";
 
 export async function POST(request: Request) {
   const parsed = await parseJsonRequest(request, recommendSpeechesRequestSchema);
@@ -9,20 +10,28 @@ export async function POST(request: Request) {
   }
 
   try {
-    const recommendations = await recommendSpeeches(parsed.data.confirmedProfile);
-    return jsonOk({
-      recommendations,
-      evidence: toEvidenceList(recommendations),
-      next: {
-        assets: "POST /api/assets/generate",
-        note: "产品流程要求用户勾选 EvidenceRef 后再生成话语资产。",
+    const result = await recommendSpeechesWithDiagnostics(parsed.data.confirmedProfile);
+    return jsonOk(
+      {
+        recommendations: result.recommendations,
+        evidence: toEvidenceList(result.recommendations),
+        diagnostics: result.diagnostics,
+        next: {
+          assets: "POST /api/assets/generate",
+          note: "产品流程要求用户勾选 EvidenceRef 后再生成话语资产。",
+        },
       },
-    });
+      200,
+      parsed.requestId,
+    );
   } catch (error) {
+    const unavailable = error instanceof IndexError;
     return jsonError(
-      "recommendation_failed",
+      unavailable ? error.code : "recommendation_failed",
       error instanceof Error ? error.message : "讲话推荐失败",
-      500,
+      unavailable ? 503 : 500,
+      undefined,
+      parsed.requestId,
     );
   }
 }

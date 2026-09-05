@@ -10,6 +10,7 @@ dist/
 Thumbs.db
 *.tsbuildinfo
 data/lancedb/
+data/indexes/
 coverage/
 __pycache__/
 *.py[cod]

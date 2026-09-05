@@ -122,3 +122,14 @@ export async function retrieveRelevantChunks(
 
   return retrieved;
 }
+
+export async function assertReadableIndex(
+  chunkRepository: ChunkRepository,
+  vectorStore: VectorStore,
+): Promise<void> {
+  const chunks = chunkRepository.listAll();
+  const indexed = await vectorStore.listChunkIds();
+  if (!sameIdSet(indexed, chunks.map((chunk) => chunk.chunkId))) {
+    throw new RetrievalError("active index 与当前 Canonical Chunk 集合不一致，拒绝查询");
+  }
+}

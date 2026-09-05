@@ -1,10 +1,8 @@
 import { defaultChunkRepository } from "../src/lib/corpus";
-import { DashScopeEmbeddingClient } from "../src/lib/embedding";
 import { generateEnterpriseProfile } from "../src/lib/services/profile";
 import { recommendSpeeches } from "../src/lib/services/matching";
 import { resolveQuoteFromEvidenceRef } from "../src/lib/services/evidence";
 import { containsCanonicalFragment } from "../src/lib/services/rerank";
-import { LanceDbVectorStore } from "../src/lib/vector";
 
 async function main() {
   const profile = generateEnterpriseProfile({
@@ -20,11 +18,7 @@ async function main() {
   console.log("↓");
   console.log("Embedding + Vector Search + DeepSeek Rerank");
 
-  const recommendations = await recommendSpeeches(profile, {
-    chunkRepository: defaultChunkRepository,
-    embeddingClient: new DashScopeEmbeddingClient(),
-    vectorStore: new LanceDbVectorStore(),
-  });
+  const recommendations = await recommendSpeeches(profile);
 
   console.log(`  recommendations=${recommendations.length}`);
   console.log("↓");

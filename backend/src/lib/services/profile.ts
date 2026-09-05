@@ -1,3 +1,4 @@
+import { buildXiSpeechRetrievalIntent } from "../domain/xi-speech/query";
 import type { EnterpriseInput, EnterpriseProfile, ProfileItem } from "../schemas";
 
 const TECH_TERMS = [
@@ -122,24 +123,8 @@ export function generateEnterpriseProfile(input: EnterpriseInput): EnterprisePro
   };
 }
 
-export function buildRetrievalText(profile: EnterpriseProfile): string {
-  const join = (items: ProfileItem[]) => items.map((entry) => entry.value).join("；");
-  return [
-    `企业定位：${join(profile.companyPositioning)}`,
-    `核心技术：${join(profile.technologyAndInnovation)}`,
-    `核心产品：${join(profile.productsAndApplications)}`,
-    `应用场景：${join(profile.productsAndApplications)}`,
-    `产业定位：${join(profile.industryAndMarket)}`,
-    `价值创造：${join(profile.valueCreation)}`,
-  ].join("\n");
-}
+export { collectProfileItems } from "../domain/xi-speech/query";
 
-export function collectProfileItems(profile: EnterpriseProfile): ProfileItem[] {
-  return [
-    ...profile.companyPositioning,
-    ...profile.technologyAndInnovation,
-    ...profile.productsAndApplications,
-    ...profile.industryAndMarket,
-    ...profile.valueCreation,
-  ];
+export function buildRetrievalText(profile: EnterpriseProfile): string {
+  return buildXiSpeechRetrievalIntent(profile, { includeHints: false }).queryText;
 }

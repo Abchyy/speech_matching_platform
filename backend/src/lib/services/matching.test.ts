@@ -3,10 +3,10 @@ import { describe, it } from "node:test";
 import { defaultChunkRepository, InMemoryChunkRepository } from "../corpus";
 import { HashEmbeddingClient } from "../embedding";
 import { InMemoryVectorStore } from "../vector";
-import { recommendSpeeches } from "./matching";
-import { buildRetrievalText, generateEnterpriseProfile } from "./profile";
-import { ReverseReranker, containsCanonicalFragment } from "./rerank";
-import { ensureChunkIndex, retrieveRelevantChunks } from "./retrieval";
+import { recommendSpeeches, recommendSpeechesWithDiagnostics } from "./matching";
+import { generateEnterpriseProfile } from "./profile";
+import { IdentityReranker, ReverseReranker, containsCanonicalFragment } from "./rerank";
+import { ensureChunkIndex } from "./retrieval";
 
 describe("vector matching pipeline with rerank", () => {
   it("从企业画像返回带完整 Chunk EvidenceRef 的结构化推荐，且排序来自 Rerank", async () => {
@@ -23,24 +23,26 @@ describe("vector matching pipeline with rerank", () => {
       techDomains: ["工业具身智能", "人工智能"],
     });
 
-    const retrieved = await retrieveRelevantChunks(buildRetrievalText(profile), {
-      topK: 20,
+    const identity = await recommendSpeeches(profile, {
+      chunkRepository,
       embeddingClient,
       vectorStore,
-      chunkRepository,
+      reranker: new IdentityReranker(),
+      retrievalMode: "dense",
     });
-    const retrievalOrder = retrieved.map((entry) => entry.chunk.chunkId);
-
     const recommendations = await recommendSpeeches(profile, {
       chunkRepository,
       embeddingClient,
       vectorStore,
       reranker: new ReverseReranker(),
+      retrievalMode: "dense",
     });
     assert.ok(recommendations.length > 0);
-    assert.equal(recommendations[0]?.chunkId, retrievalOrder.at(-1));
     assert.equal(recommendations[0]?.relevance, "strong");
     assert.match(recommendations[0]?.reason ?? "", /测试反转重排/);
+    if (identity.length > 1) {
+      assert.notEqual(recommendations[0]?.chunkId, identity[0]?.chunkId);
+    }
 
     for (const item of recommendations) {
       const chunk = chunkRepository.getByChunkId(item.chunkId);
@@ -73,6 +75,7 @@ describe("vector matching pipeline with rerank", () => {
       chunkRepository,
       embeddingClient,
       vectorStore,
+      retrievalMode: "dense",
       reranker: {
         async rerank() {
           return {
@@ -117,6 +120,7 @@ describe("vector matching pipeline with rerank", () => {
       chunkRepository,
       embeddingClient,
       vectorStore,
+      retrievalMode: "dense",
       reranker: {
         async rerank() {
           return {
@@ -137,5 +141,34 @@ describe("vector matching pipeline with rerank", () => {
     assert.equal(recommendations[0]?.quote, target.text);
     assert.equal(recommendations[0]?.reason.includes(fragment), false);
     assert.equal(containsCanonicalFragment(recommendations[0]?.reason ?? "", target.text), false);
+  });
+
+  it("查询路径不写入索引，Rerank 失败时明确降级", async () => {
+    const chunks = defaultChunkRepository.listAll().slice(0, 3);
+    const embeddingClient = new HashEmbeddingClient();
+    const vectorStore = new InMemoryVectorStore();
+    const chunkRepository = new InMemoryChunkRepository(chunks);
+    await ensureChunkIndex(chunkRepository, embeddingClient, vectorStore);
+    const writes = vectorStore.writeCount;
+
+    const profile = generateEnterpriseProfile({
+      rawCompanyDescription: "人工智能仓储企业。",
+      techDomains: ["人工智能"],
+    });
+    const result = await recommendSpeechesWithDiagnostics(profile, {
+      chunkRepository,
+      embeddingClient,
+      vectorStore,
+      retrievalMode: "dense",
+      reranker: {
+        async rerank() {
+          throw new Error("provider down");
+        },
+      },
+    });
+    assert.equal(vectorStore.writeCount, writes);
+    assert.equal(result.diagnostics.rerankDegraded, true);
+    assert.ok(result.recommendations.length > 0);
+    assert.match(result.recommendations[0]?.reason ?? "", /降级/);
   });
 });

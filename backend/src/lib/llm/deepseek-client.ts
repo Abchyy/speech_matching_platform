@@ -1,10 +1,56 @@
-import { deepseekConfig, requireDeepseekApiKey } from "../config";
+import { deepseekConfig, providerConfig, requireDeepseekApiKey } from "../config";
+import {
+  ProviderError,
+  classifyHttpStatus,
+  isRetryableNetworkError,
+  readJsonResponse,
+  withBoundedRetry,
+  type LlmCompleteOptions,
+  type LlmProvider,
+} from "../providers";
 
-export class DeepSeekError extends Error {
-  constructor(message: string) {
-    super(message);
+export class DeepSeekError extends ProviderError {
+  constructor(
+    message: string,
+    options: {
+      code: ProviderError["code"];
+      retryable: boolean;
+      status?: number;
+      provider?: string;
+      model?: string;
+      durationMs?: number;
+      attempts?: number;
+    } = { code: "PROVIDER_UNKNOWN", retryable: false },
+  ) {
+    super(message, {
+      ...options,
+      provider: options.provider ?? "deepseek",
+    });
     this.name = "DeepSeekError";
   }
+}
+
+function toDeepSeekError(error: unknown, extra?: { durationMs?: number; attempts?: number }): DeepSeekError {
+  if (error instanceof DeepSeekError) {
+    return error;
+  }
+  if (error instanceof ProviderError) {
+    return new DeepSeekError(error.message, {
+      code: error.code,
+      retryable: error.retryable,
+      status: error.status,
+      provider: error.provider ?? "deepseek",
+      model: error.model,
+      durationMs: extra?.durationMs ?? error.durationMs,
+      attempts: extra?.attempts ?? error.attempts,
+    });
+  }
+  return new DeepSeekError(error instanceof Error ? error.message : "DeepSeek 调用失败", {
+    code: "PROVIDER_UNKNOWN",
+    retryable: isRetryableNetworkError(error),
+    durationMs: extra?.durationMs,
+    attempts: extra?.attempts,
+  });
 }
 
 type ChatCompletionResponse = {
@@ -75,39 +121,82 @@ function parseJsonContent(content: string): unknown {
   }
 }
 
-export class DeepSeekChatClient {
+export class DeepSeekChatClient implements LlmProvider {
+  readonly provider = "deepseek";
   readonly model = deepseekConfig.model;
+  callCount = 0;
+  lastDurationMs = 0;
 
   constructor(
     private readonly apiKey = requireDeepseekApiKey(),
     private readonly baseUrl = deepseekConfig.baseUrl,
   ) {}
 
-  async completeJson(systemPrompt: string, userPrompt: string): Promise<unknown> {
-    const response = await fetch(joinUrl(this.baseUrl, "chat/completions"), {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
-
-    const payload = (await response.json().catch(() => ({}))) as ChatCompletionResponse;
-    if (!response.ok) {
-      throw new DeepSeekError(
-        `DeepSeek API 调用失败（HTTP ${response.status}）: ${errorMessage(payload, "unknown error")}`,
+  async completeJson(
+    systemPrompt: string,
+    userPrompt: string,
+    options: LlmCompleteOptions = {},
+  ): Promise<unknown> {
+    const started = Date.now();
+    try {
+      return await withBoundedRetry(
+        async (_attempt, signal) => {
+          this.callCount += 1;
+          const response = await fetch(joinUrl(this.baseUrl, "chat/completions"), {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: this.model,
+              temperature: 0.2,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+            }),
+            signal,
+          });
+          const payload = (await readJsonResponse(response)) as ChatCompletionResponse;
+          if (!response.ok) {
+            const classified = classifyHttpStatus(response.status);
+            throw new ProviderError(
+              `DeepSeek API 调用失败（HTTP ${response.status}）: ${errorMessage(payload, "unknown error")}`,
+              {
+                code: classified.code,
+                retryable: classified.retryable,
+                status: response.status,
+                provider: this.provider,
+                model: this.model,
+              },
+            );
+          }
+          try {
+            return parseJsonContent(extractContent(payload));
+          } catch (error) {
+            throw new ProviderError(
+              error instanceof Error ? error.message : "DeepSeek 返回内容不是合法 JSON",
+              {
+                code: "PROVIDER_INVALID_JSON",
+                retryable: false,
+                provider: this.provider,
+                model: this.model,
+              },
+            );
+          }
+        },
+        {
+          maxRetries: providerConfig.maxRetries,
+          timeoutMs: options.timeoutMs ?? providerConfig.timeoutMs,
+          signal: options.signal,
+        },
       );
+    } catch (error) {
+      throw toDeepSeekError(error, { durationMs: Date.now() - started });
+    } finally {
+      this.lastDurationMs = Date.now() - started;
     }
-
-    return parseJsonContent(extractContent(payload));
   }
 }

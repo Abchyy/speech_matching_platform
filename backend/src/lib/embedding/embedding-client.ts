@@ -1,3 +1,5 @@
+import { ProviderError, type ProviderErrorCode } from "../providers/errors";
+
 export type EmbeddingInputType = "query" | "document";
 
 export interface EmbeddingClient {
@@ -5,9 +7,28 @@ export interface EmbeddingClient {
   embed(texts: string[], inputType: EmbeddingInputType): Promise<number[][]>;
 }
 
-export class EmbeddingError extends Error {
-  constructor(message: string) {
-    super(message);
+export class EmbeddingError extends ProviderError {
+  constructor(
+    message: string,
+    options: {
+      code?: ProviderErrorCode;
+      retryable?: boolean;
+      status?: number;
+      provider?: string;
+      model?: string;
+      durationMs?: number;
+      attempts?: number;
+    } = {},
+  ) {
+    super(message, {
+      code: options.code ?? "PROVIDER_UNKNOWN",
+      retryable: options.retryable ?? false,
+      status: options.status,
+      provider: options.provider ?? "dashscope",
+      model: options.model,
+      durationMs: options.durationMs,
+      attempts: options.attempts,
+    });
     this.name = "EmbeddingError";
   }
 }
@@ -26,10 +47,12 @@ export function l2Normalize(vector: number[]): number[] {
  */
 export class HashEmbeddingClient implements EmbeddingClient {
   readonly model = "hash-embedding-test";
+  callCount = 0;
 
   constructor(private readonly dimensions = 64) {}
 
   async embed(texts: string[], _inputType: EmbeddingInputType): Promise<number[][]> {
+    this.callCount += 1;
     return texts.map((text) => {
       const vector = Array.from({ length: this.dimensions }, () => 0);
       for (const char of text) {

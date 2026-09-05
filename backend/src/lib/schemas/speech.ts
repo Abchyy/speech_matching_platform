@@ -27,6 +27,10 @@ export const speechChunkSchema = z.object({
   text: z.string().min(1),
   keywords: z.array(z.string()),
   embeddingText: z.string().min(1),
+  charStart: z.number().int().nonnegative().optional(),
+  charEnd: z.number().int().nonnegative().optional(),
+  contentHash: z.string().min(1).optional(),
+  documentContentHash: z.string().min(1).optional(),
   isDemoPlaceholder: z.boolean().optional(),
 });
 
@@ -35,6 +39,22 @@ export type SpeechChunk = z.infer<typeof speechChunkSchema>;
 export const relevanceSchema = z.enum(["strong", "medium", "weak", "irrelevant"]);
 
 export type Relevance = z.infer<typeof relevanceSchema>;
+
+export const retrievalScoreBreakdownSchema = z
+  .object({
+    dense: z.number().optional(),
+    lexical: z.number().optional(),
+    exact: z.number().optional(),
+    fusion: z.number().optional(),
+    rerank: z.number().optional(),
+    denseRank: z.number().int().optional(),
+    lexicalRank: z.number().int().optional(),
+    exactRank: z.number().int().optional(),
+    fusionRank: z.number().int().optional(),
+  })
+  .partial();
+
+export type RetrievalScoreBreakdown = z.infer<typeof retrievalScoreBreakdownSchema>;
 
 export const speechRecommendationSchema = z.object({
   chunkId: z.string().min(1),
@@ -50,6 +70,8 @@ export const speechRecommendationSchema = z.object({
   reason: z.string().min(1),
   profileEvidenceIds: z.array(z.string()),
   isDemoPlaceholder: z.boolean().optional(),
+  retrievalScores: retrievalScoreBreakdownSchema.optional(),
+  rerankDegraded: z.boolean().optional(),
 });
 
 export type SpeechRecommendation = z.infer<typeof speechRecommendationSchema>;

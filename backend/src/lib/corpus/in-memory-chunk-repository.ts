@@ -1,12 +1,21 @@
 import type { SpeechChunk } from "../schemas";
+import { CorpusIngestionError, type CanonicalDocument } from "./canonical-document";
 import type { ChunkRepository } from "./chunk-repository";
-import { CorpusIngestionError } from "./canonical-document";
+import type { CorpusSnapshot } from "./fingerprint";
 
 export class InMemoryChunkRepository implements ChunkRepository {
   private readonly byId: Map<string, SpeechChunk>;
   private readonly all: SpeechChunk[];
+  private readonly documentsById: Map<string, CanonicalDocument>;
+  private readonly snapshot: CorpusSnapshot | undefined;
 
-  constructor(chunks: SpeechChunk[]) {
+  constructor(
+    chunks: SpeechChunk[],
+    documents: CanonicalDocument[] = [],
+    snapshot?: CorpusSnapshot,
+  ) {
+    this.documentsById = new Map(documents.map((document) => [document.speechId, document]));
+    this.snapshot = snapshot;
     const seen = new Set<string>();
     for (const chunk of chunks) {
       if (seen.has(chunk.chunkId)) {
@@ -33,5 +42,13 @@ export class InMemoryChunkRepository implements ChunkRepository {
 
   listAll(): SpeechChunk[] {
     return [...this.all];
+  }
+
+  getDocument(speechId: string): CanonicalDocument | undefined {
+    return this.documentsById.get(speechId);
+  }
+
+  getSnapshot(): CorpusSnapshot | undefined {
+    return this.snapshot;
   }
 }
