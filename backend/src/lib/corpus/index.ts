@@ -11,6 +11,15 @@ export { chunkCanonicalDocument } from "./chunker";
 export { CanonicalChunkRepository } from "./canonical-chunk-repository";
 export { DemoChunkRepository } from "./demo-chunk-repository";
 export { InMemoryChunkRepository } from "./in-memory-chunk-repository";
+export type { CorpusSnapshot } from "./fingerprint";
+export { fingerprintChunks, fingerprintDocuments } from "./fingerprint";
+export {
+  loadPublishedChunkArtifacts,
+  loadPublishedChunkFiles,
+  publishedChunkSchema,
+  resolveChunkArtifactDirectory,
+  validatePublishedChunk,
+} from "./artifact";
 export type { CorpusPreflightReport, DedupMapping, IngestionResult } from "./ingestion";
 export {
   findProjectRoot,

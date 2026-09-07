@@ -1,8 +1,9 @@
+import { embeddingConfig } from "../src/lib/config";
 import { defaultChunkRepository } from "../src/lib/corpus";
 import { DashScopeEmbeddingClient } from "../src/lib/embedding";
+import { FileIndexRegistry } from "../src/lib/index";
 import { resolveQuoteFromEvidenceRef, toFullChunkEvidenceRef } from "../src/lib/services/evidence";
 import { retrieveRelevantChunks } from "../src/lib/services/retrieval";
-import { LanceDbVectorStore } from "../src/lib/vector";
 
 const QUERIES = [
   "工业具身智能创业公司，面向汽车制造，用视觉语言模型和机器人控制提升柔性生产",
@@ -17,8 +18,21 @@ function preview(text: string, max = 80): string {
 
 async function main() {
   const chunkRepository = defaultChunkRepository;
+  const snapshot = chunkRepository.getSnapshot?.();
+  if (!snapshot) {
+    throw new Error("缺少 corpus snapshot");
+  }
   const embeddingClient = new DashScopeEmbeddingClient();
-  const vectorStore = new LanceDbVectorStore();
+  const active = await new FileIndexRegistry().assertReadyForQuery(
+    snapshot,
+    {
+      provider: "dashscope",
+      model: embeddingClient.model,
+      dimensions: embeddingConfig.dimensions,
+    },
+    chunkRepository.listAll().map((chunk) => chunk.chunkId),
+  );
+  const vectorStore = active.vectorStore;
 
   console.log(`Runtime chunks=${chunkRepository.listAll().length}`);
   console.log("Query → Vector Search → EvidenceRef quote backfill");

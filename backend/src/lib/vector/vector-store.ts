@@ -22,6 +22,29 @@ export class VectorStoreError extends Error {
   }
 }
 
+export class IndexWriteForbiddenError extends VectorStoreError {
+  constructor(message = "查询路径禁止写入索引") {
+    super(message);
+    this.name = "IndexWriteForbiddenError";
+  }
+}
+
+export class ReadOnlyVectorStore implements VectorStore {
+  constructor(private readonly inner: VectorStore) {}
+
+  async upsert(): Promise<void> {
+    throw new IndexWriteForbiddenError("INDEX_WRITE_FORBIDDEN: 用户请求路径不得写入索引");
+  }
+
+  search(vector: number[], topK: number): Promise<VectorSearchHit[]> {
+    return this.inner.search(vector, topK);
+  }
+
+  listChunkIds(): Promise<string[]> {
+    return this.inner.listChunkIds();
+  }
+}
+
 export function cosineSimilarity(left: number[], right: number[]): number {
   const length = Math.min(left.length, right.length);
   let dot = 0;
@@ -40,8 +63,10 @@ export function cosineSimilarity(left: number[], right: number[]): number {
 
 export class InMemoryVectorStore implements VectorStore {
   private records: VectorRecord[] = [];
+  writeCount = 0;
 
   async upsert(records: VectorRecord[]): Promise<void> {
+    this.writeCount += 1;
     const byId = new Map(this.records.map((record) => [record.chunkId, record]));
     for (const record of records) {
       byId.set(record.chunkId, record);

@@ -13,18 +13,24 @@ export async function POST(request: Request) {
       parsed.data.confirmedProfile,
       parsed.data.selectedEvidenceRefs,
     );
-    return jsonOk({
-      assets,
-      next: {
-        material: "POST /api/material/generate",
-        note: "产品流程要求用户确认话语资产后再生成场景材料。",
+    return jsonOk(
+      {
+        assets,
+        next: {
+          material: "POST /api/material/generate",
+          note: "产品流程要求用户确认话语资产后再生成场景材料。",
+        },
       },
-    });
+      200,
+      parsed.requestId,
+    );
   } catch (error) {
     return jsonError(
       "assets_generation_failed",
       error instanceof Error ? error.message : "话语资产生成失败",
       400,
+      undefined,
+      parsed.requestId,
     );
   }
 }

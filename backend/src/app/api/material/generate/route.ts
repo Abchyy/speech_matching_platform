@@ -16,12 +16,14 @@ export async function POST(request: Request) {
       scenario: parsed.data.scenario,
       additionalRequirements: parsed.data.additionalRequirements,
     });
-    return jsonOk({ material });
+    return jsonOk({ material }, 200, parsed.requestId);
   } catch (error) {
     return jsonError(
       "material_generation_failed",
       error instanceof Error ? error.message : "场景材料生成失败",
       400,
+      undefined,
+      parsed.requestId,
     );
   }
 }

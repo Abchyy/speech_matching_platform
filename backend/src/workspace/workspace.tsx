@@ -91,8 +91,14 @@ export function Workspace() {
     }
     dispatch({ type: "REQUEST", key: "profile" });
     try {
-      const { profile } = await generateProfile(description);
-      dispatch({ type: "PROFILE_GENERATED", profile });
+      const generated = await generateProfile(description);
+      dispatch({
+        type: "PROFILE_GENERATED",
+        profile: generated.profile,
+        notice: generated.fallback
+          ? "当前为企业规则画像（未调用真实模型），仅作开发 fallback。"
+          : undefined,
+      });
     } catch (error) {
       dispatch({ type: "FAIL", message: errorMessage(error) });
     }
@@ -398,7 +404,11 @@ function ProfileStage({
         description="以下为五维结构化画像。你可以修改、删除或补充任意条目；只有点击确认后，系统才会基于确认画像检索讲话证据。修改已确认画像将使下游推荐、勾选、资产与材料全部失效。"
       />
       {state.notice ? (
-        <Banner tone="amber" title="下游已失效" onClose={() => dispatch({ type: "CLEAR_NOTICE" })}>
+        <Banner
+          tone="amber"
+          title={state.notice.includes("规则画像") ? "画像生成方式" : "下游已失效"}
+          onClose={() => dispatch({ type: "CLEAR_NOTICE" })}
+        >
           {state.notice}
         </Banner>
       ) : null}

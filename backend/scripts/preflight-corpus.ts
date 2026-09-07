@@ -4,9 +4,14 @@ function main() {
   const report = preflightCanonicalCorpus();
   console.log("Canonical preflight");
   console.log(`  directory=${report.canonicalDirectory}`);
+  console.log(`  chunks=${report.chunkArtifactDirectory}`);
   console.log(`  documents=${report.documentCount}`);
   console.log(`  runtimeDocuments=${report.runtimeDocumentCount}`);
   console.log(`  runtimeChunks=${report.chunkCount}`);
+  console.log(`  corpusVersion=${report.corpusVersion ?? ""}`);
+  console.log(`  corpusFingerprint=${report.corpusFingerprint ?? ""}`);
+  console.log(`  chunkFingerprint=${report.chunkFingerprint ?? ""}`);
+  console.log(`  chunkPolicyVersion=${report.chunkPolicyVersion ?? ""}`);
   console.log(`  sha256Verified=${report.sha256Verified}`);
   console.log(`  substringVerified=${report.substringVerified}`);
   console.log(`  uniqueSpeechIds=${report.uniqueSpeechIds}`);

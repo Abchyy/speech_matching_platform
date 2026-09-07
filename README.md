@@ -8,16 +8,19 @@
 
 ## 当前阶段
 
-**M1 Development：真实 Canonical 语料接入与向量检索**
+**M2：证据稳定、索引可复现、Provider 可替换、检索可评测**
 
-Canonical Source 为 `corpus/cleaned/`。运行时 Chunk 由后端 Chunker 从 Canonical 原文生成，不以 `corpus/chunks/` 预切片作为检索源。
+Canonical Source 为 `corpus/cleaned/`。运行时 Chunk 只读取 `corpus/chunks/` 已发布 Artifact（当前 63 篇 / 447 Chunk），不再从 Canonical Markdown 现场切块。向量索引必须离线构建并发布；推荐请求只读 active index。默认检索模式为 dense；hybrid 为显式实验开关。
 
 ## 本地启动
 
 ```bash
 cd backend
-npm install
+npm ci
 cp .env.example .env.local
+npm run corpus:preflight
+npm run corpus:index    # 离线构建并发布 active index；需要 DASHSCOPE_API_KEY
+npm run index:status
 npm run dev
 ```
 

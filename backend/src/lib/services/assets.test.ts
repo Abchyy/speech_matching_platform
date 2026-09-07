@@ -156,7 +156,7 @@ describe("discourse asset generation", () => {
         async generate() {
           return {
             technologyInnovation: [1, 2, 3].map((index) => ({
-              title: `技术创新表达 ${index}`,
+              title: `企业能力表达 ${index}`,
               text: `企业基于已确认技术能力形成第 ${index} 条表达。`,
               profileEvidenceIds: ["tech_1"],
               evidenceChunkIds: [selectedChunks[0]!.chunkId],
@@ -173,7 +173,7 @@ describe("discourse asset generation", () => {
     assert.equal(assets.technologyInnovation.length, MAX_ASSETS_PER_DIMENSION);
     assert.deepEqual(
       assets.technologyInnovation.map((asset) => asset.title),
-      ["技术创新表达 1", "技术创新表达 2"],
+      ["企业能力表达 1", "企业能力表达 2"],
     );
     assert.equal(assets.industryValue.length, 0);
     assert.equal(assets.socialValue.length, 0);

@@ -1,6 +1,7 @@
 import { speechChunkSchema, type SpeechChunk } from "../schemas";
 import {
   CorpusIngestionError,
+  hashCanonicalText,
   type CanonicalDocument,
 } from "./canonical-document";
 
@@ -95,7 +96,7 @@ function buildEmbeddingText(title: string, text: string): string {
 }
 
 function toChunkId(speechId: string, chunkIndex: number): string {
-  return `${speechId}_chunk_${String(chunkIndex).padStart(3, "0")}`;
+  return `${speechId}_c${String(chunkIndex).padStart(3, "0")}`;
 }
 
 /**
@@ -116,12 +117,16 @@ export function chunkCanonicalDocument(
     throw new CorpusIngestionError(`Canonical Document 无法生成 Chunk: ${document.speechId}`);
   }
 
+  let cursor = 0;
   return texts.map((text, chunkIndex) => {
-    if (!document.fullText.includes(text)) {
+    const start = document.fullText.indexOf(text, cursor);
+    if (start < 0 || document.fullText.slice(start, start + text.length) !== text) {
       throw new CorpusIngestionError(
         `Chunk 文本必须是 Canonical Document 的原样子串: ${document.speechId}`,
       );
     }
+    const end = start + text.length;
+    cursor = end;
 
     const parsed = speechChunkSchema.safeParse({
       chunkId: toChunkId(document.speechId, chunkIndex),
@@ -134,6 +139,10 @@ export function chunkCanonicalDocument(
       text,
       keywords,
       embeddingText: buildEmbeddingText(document.title, text),
+      charStart: start,
+      charEnd: end,
+      contentHash: hashCanonicalText(text),
+      documentContentHash: document.sha256 ?? hashCanonicalText(document.fullText),
       isDemoPlaceholder: document.isDemoPlaceholder,
     });
 

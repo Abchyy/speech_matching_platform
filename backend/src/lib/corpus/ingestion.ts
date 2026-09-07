@@ -1,16 +1,27 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  EXPECTED_CLEANED_DOCUMENT_COUNT,
+  EXPECTED_RUNTIME_CHUNK_COUNT,
+  EXPECTED_RUNTIME_DOCUMENT_COUNT,
+} from "../domain/xi-speech/constants";
 import type { SpeechChunk } from "../schemas";
+import {
+  loadPublishedChunkArtifacts,
+  resolveChunkArtifactDirectory,
+} from "./artifact";
 import {
   CorpusIngestionError,
   type CanonicalDocument,
 } from "./canonical-document";
 import { chunkCanonicalDocument } from "./chunker";
+import type { CorpusSnapshot } from "./fingerprint";
 import { parseCanonicalMarkdown, type ParsedCanonicalMarkdown } from "./parser";
 
 export type IngestionResult = {
   documents: CanonicalDocument[];
   chunks: SpeechChunk[];
+  snapshot?: CorpusSnapshot;
 };
 
 function assertUniqueSpeechIds(documents: CanonicalDocument[]): void {
@@ -192,23 +203,32 @@ export function ingestDemoCorpus(startDir = process.cwd()): IngestionResult {
 }
 
 export function ingestProjectCorpus(startDir = process.cwd()): IngestionResult {
+  const root = findProjectRoot(startDir);
   const parsed = loadCanonicalMarkdownFiles(resolveCanonicalCorpusDirectory(startDir));
+  const allDocuments = parsed.map((item) => item.document);
+  assertUniqueSpeechIds(allDocuments);
   const metadata = loadMetadataKeywords(startDir);
   const droppedIds = new Set(Object.keys(loadDedupMapping(startDir).dropped));
-  const runtime = parsed.filter((item) => !droppedIds.has(item.document.speechId));
-  const documents = runtime.map((item) => item.document);
-  assertUniqueSpeechIds(documents);
-  const chunks = runtime.flatMap((item) =>
-    chunkCanonicalDocument(item.document, {
-      keywords: keywordsFor(item, metadata),
-    }),
-  );
-  assertUniqueChunkIds(chunks);
-  return { documents, chunks };
+  const keywordsBySpeechId = new Map<string, string[]>();
+  for (const item of parsed) {
+    keywordsBySpeechId.set(item.document.speechId, keywordsFor(item, metadata));
+  }
+
+  const loaded = loadPublishedChunkArtifacts({
+    documents: allDocuments,
+    droppedIds,
+    keywordsBySpeechId,
+    chunkDirectory: resolveChunkArtifactDirectory(root),
+    expectedDocumentCount: EXPECTED_RUNTIME_DOCUMENT_COUNT,
+    expectedChunkCount: EXPECTED_RUNTIME_CHUNK_COUNT,
+  });
+  assertUniqueChunkIds(loaded.chunks);
+  return loaded;
 }
 
 export type CorpusPreflightReport = {
   canonicalDirectory: string;
+  chunkArtifactDirectory: string;
   documentCount: number;
   runtimeDocumentCount: number;
   chunkCount: number;
@@ -216,6 +236,10 @@ export type CorpusPreflightReport = {
   substringVerified: number;
   uniqueSpeechIds: boolean;
   uniqueChunkIds: boolean;
+  corpusVersion?: string;
+  corpusFingerprint?: string;
+  chunkFingerprint?: string;
+  chunkPolicyVersion?: string;
   dedupPolicy: string;
   droppedCount: number;
   dropped: Array<{ speechId: string; keep: string; reason: string }>;
@@ -226,29 +250,34 @@ export function preflightCanonicalCorpus(startDir = process.cwd()): CorpusPrefli
   const parsed = loadCanonicalMarkdownFiles(directory);
   const documents = parsed.map((item) => item.document);
   assertUniqueSpeechIds(documents);
-
-  const allChunks = parsed.flatMap((item) =>
-    chunkCanonicalDocument(item.document, { keywords: item.retrievalKeywords }),
-  );
-  assertUniqueChunkIds(allChunks);
-
-  let substringVerified = 0;
-  for (const item of parsed) {
-    const chunks = chunkCanonicalDocument(item.document, { keywords: item.retrievalKeywords });
-    for (const chunk of chunks) {
-      if (!item.document.fullText.includes(chunk.text)) {
-        throw new CorpusIngestionError(`Chunk 不是 Canonical 子串: ${chunk.chunkId}`);
-      }
-      substringVerified += 1;
-    }
+  if (documents.length !== EXPECTED_CLEANED_DOCUMENT_COUNT) {
+    throw new CorpusIngestionError(
+      `Canonical 文档数不符合快照: ${documents.length} != ${EXPECTED_CLEANED_DOCUMENT_COUNT}`,
+    );
   }
 
   const dedup = loadDedupMapping(startDir);
   const droppedIds = new Set(Object.keys(dedup.dropped));
   const runtime = ingestProjectCorpus(startDir);
+  const bySpeechId = new Map(runtime.documents.map((document) => [document.speechId, document]));
+
+  let substringVerified = 0;
+  for (const chunk of runtime.chunks) {
+    const document = bySpeechId.get(chunk.speechId);
+    if (!document) {
+      throw new CorpusIngestionError(`运行时 Chunk 缺少 Canonical Document: ${chunk.chunkId}`);
+    }
+    const start = chunk.charStart ?? 0;
+    const end = chunk.charEnd ?? chunk.text.length;
+    if (document.fullText.slice(start, end) !== chunk.text) {
+      throw new CorpusIngestionError(`Chunk 不是 Canonical 子串: ${chunk.chunkId}`);
+    }
+    substringVerified += 1;
+  }
 
   return {
     canonicalDirectory: directory,
+    chunkArtifactDirectory: resolveChunkArtifactDirectory(findProjectRoot(startDir)),
     documentCount: documents.length,
     runtimeDocumentCount: runtime.documents.length,
     chunkCount: runtime.chunks.length,
@@ -256,6 +285,10 @@ export function preflightCanonicalCorpus(startDir = process.cwd()): CorpusPrefli
     substringVerified,
     uniqueSpeechIds: true,
     uniqueChunkIds: true,
+    corpusVersion: runtime.snapshot?.corpusVersion,
+    corpusFingerprint: runtime.snapshot?.corpusFingerprint,
+    chunkFingerprint: runtime.snapshot?.chunkFingerprint,
+    chunkPolicyVersion: runtime.snapshot?.chunkPolicyVersion,
     dedupPolicy: dedup.policy,
     droppedCount: droppedIds.size,
     dropped: Object.entries(dedup.dropped).map(([speechId, item]) => ({

@@ -2,14 +2,17 @@
 
 企业输入 → 画像结构化 → Embedding 向量检索 → DeepSeek Rerank → 已选 EvidenceRef → 四维话语资产 → 场景材料。
 
-当前画像生成仍为 mock；讲话匹配、话语资产与场景材料已接入 DeepSeek。运行时 Canonical Source 为 `corpus/cleaned/`，Chunk 由后端 Chunker 从原文生成。DEMO 目录仍保留占位文本，**不是**总书记讲话原文。
+正式画像路径接入 DeepSeek；无凭据时显式走规则 fallback，不会冒充真实模型。讲话匹配读取已发布 active index。默认检索为 dense；hybrid（Dense + lexical + exact + RRF）需设置 `RETRIEVAL_MODE=hybrid`。运行时 Canonical Source 为 `corpus/cleaned/`，Chunk 只来自 `corpus/chunks/` Artifact。DEMO 目录仍保留占位文本，**不是**总书记讲话原文。
 
 ## 启动
 
 ```bash
 cd backend
-npm install
+npm ci
 cp .env.example .env.local   # 填入 DASHSCOPE_API_KEY；DeepSeek 可复用同一把 Model Studio 密钥
+npm run corpus:preflight
+npm run corpus:index         # 离线构建并发布；请求路径不会写索引
+npm run index:status
 npm run dev
 ```
 
@@ -25,6 +28,9 @@ npm test
 npm run typecheck
 npm run corpus:preflight
 npm run corpus:index
+npm run index:status
+npm run eval:retrieval
+npm run e2e:test-provider
 npm run retrieve:demo
 npm run recommend:demo
 npm run assets:demo
@@ -37,10 +43,10 @@ npm run material:demo
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/health` | 健康检查 |
+| GET | `/api/health` | 存活与索引就绪（索引不可用时 `ready=false`，HTTP 503） |
 | POST | `/api/match` | Vertical Slice 入口 |
-| POST | `/api/profile/generate` | 企业画像（mock） |
-| POST | `/api/speeches/recommend` | 向量召回 + Rerank 推荐 + Evidence |
+| POST | `/api/profile/generate` | 企业画像（DeepSeek；无凭据时显式 rules-fallback） |
+| POST | `/api/speeches/recommend` | 已发布索引上的检索 + Rerank + Evidence（默认 dense） |
 | POST | `/api/assets/generate` | 四维话语资产（DeepSeek + Evidence 回填） |
 | POST | `/api/material/generate` | 场景材料（DeepSeek + Evidence 回填） |
 

@@ -106,7 +106,7 @@ source: DEMO
 
     const chunks = chunkCanonicalDocument(document);
     assert.equal(chunks.length, 1);
-    assert.equal(chunks[0]?.chunkId, "manual_doc_chunk_000");
+    assert.equal(chunks[0]?.chunkId, "manual_doc_c000");
     assert.equal(chunks[0]?.text, document.fullText);
     assert.equal(document.fullText.includes(chunks[0]!.text), true);
 
@@ -118,8 +118,8 @@ source: DEMO
     const { chunks } = ingestDemoCorpus();
     const ids = chunks.map((chunk) => chunk.chunkId);
     assert.equal(new Set(ids).size, ids.length);
-    assert.ok(ids.includes("demo_speech_sci_tech_chunk_000"));
-    assert.ok(ids.includes("demo_speech_sci_tech_chunk_001"));
+    assert.ok(ids.includes("demo_speech_sci_tech_c000"));
+    assert.ok(ids.some((id) => id.startsWith("demo_speech_sci_tech_c")));
   });
 
   it("Repository 可以读取 ingestion 生成的 Chunk", () => {
@@ -132,13 +132,13 @@ source: DEMO
 
     const demoRepository = new DemoChunkRepository();
     assert.equal(demoRepository.listAll().length, chunks.length);
-    assert.ok(demoRepository.getByChunkId("demo_speech_enterprise_chunk_000"));
+    assert.ok(demoRepository.getByChunkId("demo_speech_enterprise_c000"));
   });
 
   it("Evidence 可以引用生成的 Chunk，并遵守完整 Chunk 冻结规则", () => {
     const { chunks } = ingestDemoCorpus();
     const repository = new InMemoryChunkRepository(chunks);
-    const chunk = repository.getByChunkId("demo_speech_industry_chunk_000");
+    const chunk = repository.getByChunkId("demo_speech_industry_c000");
     assert.ok(chunk);
 
     const ref = toFullChunkEvidenceRef(chunk);
@@ -149,14 +149,18 @@ source: DEMO
     assert.equal(resolveQuoteFromEvidenceRef(ref, repository), chunk.text);
   });
 
-  it("cleaned Canonical 由当前 Chunker 生成运行时 Chunk，并跳过去重副本", () => {
+  it("cleaned Canonical 运行时只读取已发布 Chunk Artifact，并跳过去重副本", () => {
     const report = preflightCanonicalCorpus();
     assert.ok(report.canonicalDirectory.replaceAll("\\", "/").endsWith("corpus/cleaned"));
+    assert.ok(report.chunkArtifactDirectory.replaceAll("\\", "/").endsWith("corpus/chunks"));
     assert.equal(report.sha256Verified, report.documentCount);
     assert.equal(report.uniqueSpeechIds, true);
     assert.equal(report.uniqueChunkIds, true);
-    assert.ok(report.chunkCount > 0);
+    assert.equal(report.documentCount, 75);
+    assert.equal(report.runtimeDocumentCount, 63);
+    assert.equal(report.chunkCount, 447);
     assert.equal(report.runtimeDocumentCount, report.documentCount - report.droppedCount);
+    assert.equal(report.substringVerified, 447);
 
     const { documents, chunks } = ingestProjectCorpus();
     assert.equal(documents.length, report.runtimeDocumentCount);
@@ -167,7 +171,8 @@ source: DEMO
     for (const chunk of chunks) {
       const document = bySpeechId.get(chunk.speechId);
       assert.ok(document);
-      assert.equal(document.fullText.includes(chunk.text), true);
+      assert.equal(document.fullText.slice(chunk.charStart ?? 0, chunk.charEnd ?? 0), chunk.text);
+      assert.match(chunk.chunkId, /_c\d{3}$/);
     }
   });
 });

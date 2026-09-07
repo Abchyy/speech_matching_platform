@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { ChunkRepository } from "./chunk-repository";
 import { CanonicalChunkRepository } from "./canonical-chunk-repository";
 import { defaultChunkRepository } from "./index";
+import { hashCanonicalText } from "./canonical-document";
 import type { SpeechChunk } from "../schemas";
 import {
   EvidenceError,
@@ -16,6 +17,7 @@ import { InMemoryVectorStore } from "../vector";
 import { ensureChunkIndex } from "../services/retrieval";
 import { IdentityReranker } from "../services/rerank";
 
+const stubText = "【演示占位文本，非总书记讲话原文】人工智能仓储替换测试。";
 const stubChunk: SpeechChunk = {
   chunkId: "stub_chunk_001",
   speechId: "stub_speech_001",
@@ -23,9 +25,11 @@ const stubChunk: SpeechChunk = {
   title: "[STUB] repository boundary",
   date: "2024-01-01",
   source: "STUB",
-  text: "【演示占位文本，非总书记讲话原文】人工智能仓储替换测试。",
+  text: stubText,
   keywords: ["人工智能"],
-  embeddingText: "【演示占位文本，非总书记讲话原文】人工智能仓储替换测试。",
+  embeddingText: stubText,
+  contentHash: hashCanonicalText(stubText),
+  documentContentHash: hashCanonicalText(`doc:${stubText}`),
   isDemoPlaceholder: true,
 };
 
@@ -83,6 +87,7 @@ describe("ChunkRepository boundary", () => {
       embeddingClient,
       vectorStore,
       reranker: new IdentityReranker(),
+      retrievalMode: "dense",
     });
     assert.equal(recommendations.length, 1);
     assert.equal(recommendations[0]?.chunkId, stubChunk.chunkId);

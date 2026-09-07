@@ -58,15 +58,38 @@ function optionalNumber(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function optionalFlag(value: string | undefined, fallback: boolean): boolean {
+  if (value == null || value === "") return fallback;
+  return value !== "0" && value.toLowerCase() !== "false";
+}
+
 export const appConfig = {
   name: "speech-matching-platform",
-  mockMode: true,
+  mockMode: false,
   /** 工程默认值，产品侧推荐数量尚未冻结。 */
   recommendationLimit: 5,
   /** 工程默认值，Vector Top-K 尚未冻结。 */
   retrievalTopK: 20,
   /** 工程默认值，同一讲话保留几个 Chunk 尚未冻结。 */
   maxChunksPerSpeech: 2,
+} as const;
+
+export const retrievalConfig = {
+  /** 真实 Qwen + 人工 gold 完成前默认 dense；hybrid 需显式打开。 */
+  mode: process.env.RETRIEVAL_MODE === "hybrid" ? "hybrid" : "dense",
+  rrfK: optionalNumber(process.env.RETRIEVAL_RRF_K, 60),
+  enableLexical: optionalFlag(process.env.RETRIEVAL_LEXICAL, true),
+  enableExact: optionalFlag(process.env.RETRIEVAL_EXACT, true),
+  /** 默认关闭，直到评测 KEEP。 */
+  enableQueryHints: optionalFlag(process.env.RETRIEVAL_HINTS, false),
+  enableRerank: optionalFlag(process.env.RETRIEVAL_RERANK, true),
+  enableDiversity: optionalFlag(process.env.RETRIEVAL_DIVERSITY, true),
+} as const;
+
+export const providerConfig = {
+  timeoutMs: optionalNumber(process.env.PROVIDER_TIMEOUT_MS, 30000),
+  /** 额外重试次数；总尝试次数 = maxRetries + 1。 */
+  maxRetries: Math.max(0, optionalNumber(process.env.PROVIDER_MAX_RETRIES, 2)),
 } as const;
 
 export const embeddingConfig = {
